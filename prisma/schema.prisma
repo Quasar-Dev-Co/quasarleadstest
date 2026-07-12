@@ -1,0 +1,873 @@
+// Prisma Schema for QuasarLeads - PostgreSQL Migration
+// Generated from MongoDB schemas
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User Model
+model User {
+  id        String   @id @default(cuid())
+  username  String   @unique @db.VarChar(30)
+  email     String   @unique @db.VarChar(255)
+  password  String   @db.VarChar(255)
+  verified  Boolean  @default(false)
+  admin     Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Credentials stored as JSON
+  credentials Json?
+
+  // Automation Scheduling
+  automationTimezone    String   @default("America/New_York") @db.VarChar(100)
+  workWindowStart       Int      @default(9)   // Hour (0-23) in user's timezone
+  workWindowEnd         Int      @default(17)  // Hour (0-23) in user's timezone
+  automationEnabled     Boolean  @default(true)
+
+  // Relations
+  leads                 Lead[]
+  leadsCreated          Lead[]                 @relation("LeadsCreatedBy")
+  bookings              Booking[]
+  emailTemplates        EmailTemplate[]
+  incomingEmails        IncomingEmail[]
+  aiResponses           AIResponse[]
+  jobQueues             JobQueue[]
+  searchJobs            SearchJob[]
+  temporaryLeads        TemporaryLead[]
+  availability          Availability?
+  companySettings       CompanySettings?
+  campaigns             Campaign[]
+  automationAISetting   AutomationAISetting?
+  linkedInConversations  LinkedInConversation[]
+  automationLogs        AutomationLog[]
+
+  @@index([email])
+  @@index([username])
+}
+
+// Lead Model
+model Lead {
+  id               String   @id @default(cuid())
+  name             String   @db.VarChar(255)
+  company          String   @db.VarChar(255)
+  companyOwner     String?  @db.VarChar(255)
+  location         String   @db.VarChar(255)
+  website          String?  @db.VarChar(500)
+  email            String   @db.VarChar(255)
+  phone            String?  @db.VarChar(50)
+  linkedinProfile  String?  @db.VarChar(500)
+  status           String   @default("active") @db.VarChar(50)
+  stage            String?  @default("new_leads") @db.VarChar(50)
+  googleAds        Boolean  @default(false)
+  googleAdsChecked Boolean  @default(false)
+  organicRanking   Int?
+  isHighValue      Boolean  @default(false)
+  notes            String?  @db.Text
+  tags             String[]
+  source           String?  @default("search") @db.VarChar(100)
+  industry         String?  @db.VarChar(100)
+  searchService    String?  @db.VarChar(255)
+  searchLocation   String?  @db.VarChar(255)
+  address          String?  @db.VarChar(500)
+  latitude         Float?
+  longitude        Float?
+  rating           Float?
+  reviews          Int?
+
+  // Auth Information stored as JSON
+  authInformation Json?
+
+  // Email Automation
+  lastContactedAt        DateTime?
+  lastEmailedAt          DateTime?
+  emailAutomationEnabled Boolean   @default(true)
+  emailSequenceStage     String?   @db.VarChar(50)
+  emailSequenceStartDate DateTime?
+  emailSequenceActive    Boolean   @default(false)
+  nextScheduledEmail     DateTime?
+  emailSequenceStep      Int?
+  emailStoppedReason     String?   @db.Text
+
+  // Email retry and failure tracking
+  emailRetryCount   Int       @default(0)
+  emailFailureCount Int       @default(0)
+  emailLastAttempt  DateTime?
+  emailStatus       String?   @default("ready") @db.VarChar(50)
+  emailErrors       Json? // Array of error objects
+
+  // Email validation
+  emailValidationStatus    String?   @default("notScanned") @db.VarChar(50)
+  emailValidationCheckedAt DateTime?
+  emailValidationDetails   Json?
+
+  // Outreach configuration
+  outreachRecipient String? @default("lead") @db.VarChar(20)
+  senderIdentity    String? @default("company") @db.VarChar(20)
+
+  // Email history stored as JSON array
+  emailHistory Json?
+
+  // Follow-up tracking
+  nextFollowUpDate DateTime?
+  followUpCount    Int       @default(0)
+
+  // Assignment
+  assignedTo     String? @db.VarChar(255)
+  assignedToUser User?   @relation(fields: [assignedTo], references: [id])
+  leadsCreatedBy String? @db.VarChar(255)
+  createdByUser  User?   @relation("LeadsCreatedBy", fields: [leadsCreatedBy], references: [id])
+
+  // Deal tracking
+  dealValue       Float?
+  probability     Int?
+  budget          Float?
+  closedDate      DateTime?
+  closedReason    String?   @db.Text
+  lossReason      String?   @db.VarChar(50)
+  lossDescription String?   @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  incomingEmails IncomingEmail[]
+
+  @@index([name])
+  @@index([company])
+  @@index([companyOwner])
+  @@index([email])
+  @@index([status])
+  @@index([isHighValue])
+  @@index([tags])
+  @@index([assignedTo])
+  @@index([leadsCreatedBy])
+  @@index([emailSequenceActive, nextScheduledEmail])
+  @@index([emailValidationStatus])
+  @@index([nextFollowUpDate])
+  @@index([status, nextFollowUpDate])
+  @@index([googleAds])
+  @@index([googleAds, status])
+  @@index([isHighValue, status])
+  @@index([location])
+  @@index([source])
+}
+
+// Booking Model
+model Booking {
+  id                  String    @id @default(cuid())
+  companyName         String    @db.VarChar(255)
+  companyEmail        String    @db.VarChar(255)
+  companyPhone        String?   @db.VarChar(50)
+  clientName          String    @db.VarChar(255)
+  position            String    @db.VarChar(100)
+  memberCount         String    @db.VarChar(10)
+  meetingPlatform     String    @db.VarChar(20)
+  preferredDate       DateTime
+  preferredTime       String    @db.VarChar(20)
+  timezone            String    @db.VarChar(100)
+  additionalNotes     String?   @db.Text
+  status              String    @default("pending") @db.VarChar(20)
+  meetingLink         String?   @db.VarChar(500)
+  meetingId           String?   @db.VarChar(255)
+  meetingPassword     String?   @db.VarChar(100)
+  meetingHost         String?   @db.VarChar(255)
+  meetingPlatformData Json?
+  calendarEventId     String?   @db.VarChar(255)
+  calendarEventLink   String?   @db.VarChar(500)
+  actualMeetingDate   DateTime?
+  actualMeetingTime   String?   @db.VarChar(20)
+  assignedTo          String?   @db.VarChar(255)
+  userId              String?   @db.VarChar(255)
+  user                User?     @relation(fields: [userId], references: [id])
+  internalNotes       String?   @db.Text
+  followUpDate        DateTime?
+  source              String    @default("website_booking_form") @db.VarChar(100)
+  ipAddress           String?   @db.VarChar(50)
+  userAgent           String?   @db.VarChar(500)
+  confirmedAt         DateTime?
+  completedAt         DateTime?
+  cancelledAt         DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([companyName])
+  @@index([companyEmail])
+  @@index([clientName])
+  @@index([preferredDate])
+  @@index([status])
+  @@index([userId])
+  @@index([assignedTo])
+  @@index([status, preferredDate])
+  @@index([companyEmail, status])
+  @@index([followUpDate])
+  @@index([source])
+}
+
+// Email Template Model
+model EmailTemplate {
+  id             String   @id @default(cuid())
+  stage          String   @db.VarChar(100)
+  userId         String?  @db.VarChar(255)
+  user           User?    @relation(fields: [userId], references: [id])
+  subject        String   @db.VarChar(500)
+  contentPrompt  String   @db.Text
+  emailSignature String   @db.Text
+  mediaLinks     String   @db.Text
+  htmlContent    String   @db.Text
+  textContent    String   @db.Text
+  isActive       Boolean  @default(true)
+  variables      String[]
+  timing         Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([stage, userId])
+  @@index([userId])
+  @@index([stage])
+}
+
+// Incoming Email Model
+model IncomingEmail {
+  id                String    @id @default(cuid())
+  userId            String?   @db.VarChar(255)
+  user              User?     @relation(fields: [userId], references: [id])
+  leadId            String?   @db.VarChar(255)
+  lead              Lead?     @relation(fields: [leadId], references: [id])
+  leadName          String    @db.VarChar(255)
+  leadEmail         String    @db.VarChar(255)
+  subject           String    @db.VarChar(500)
+  content           String    @db.Text
+  htmlContent       String    @db.Text
+  status            String    @default("unread") @db.VarChar(50)
+  receivedAt        DateTime  @default(now())
+  processedAt       DateTime?
+  respondedAt       DateTime?
+  isReply           Boolean   @default(false)
+  isRecent          Boolean   @default(true)
+  originalEmailId   String?   @db.VarChar(255)
+  threadId          String?   @db.VarChar(255)
+  sentiment         String    @default("neutral") @db.VarChar(50)
+  metadata          Json?
+  conversationCount Int       @default(0)
+  conversationId    String?   @db.VarChar(255)
+  isThirdReply      Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  aiResponses AIResponse[]
+
+  @@index([userId])
+  @@index([leadId])
+  @@index([leadEmail])
+  @@index([status, receivedAt])
+  @@index([isReply, isRecent])
+  @@index([leadEmail, threadId])
+  @@index([threadId])
+}
+
+// AI Response Model
+model AIResponse {
+  id                 String        @id @default(cuid())
+  userId             String?       @db.VarChar(255)
+  user               User?         @relation(fields: [userId], references: [id])
+  incomingEmailId    String        @db.VarChar(255)
+  incomingEmail      IncomingEmail @relation(fields: [incomingEmailId], references: [id])
+  generatedSubject   String        @db.VarChar(500)
+  generatedContent   String        @db.Text
+  reasoning          String        @db.Text
+  status             String        @default("draft") @db.VarChar(50)
+  responseType       String        @default("ai_generated") @db.VarChar(50)
+  sentAt             DateTime?
+  sentMessageId      String?       @db.VarChar(255)
+  lastError          String?       @db.Text
+  originalEmailStage String?       @db.VarChar(100)
+  autoGenerated      Boolean       @default(false)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  @@index([userId])
+  @@index([incomingEmailId])
+  @@index([responseType])
+  @@index([status])
+}
+
+// Job Queue Model
+model JobQueue {
+  id                       String    @id @default(cuid())
+  jobId                    String    @unique @db.VarChar(255)
+  type                     String    @db.VarChar(50)
+  status                   String    @default("pending") @db.VarChar(50)
+  priority                 Int       @default(1)
+  services                 String[]
+  locations                String[]
+  leadQuantity             Int
+  currentService           String    @default("") @db.VarChar(255)
+  currentLocation          String    @default("") @db.VarChar(255)
+  currentStep              Int       @default(0)
+  totalSteps               Int
+  progress                 Int       @default(0)
+  progressMessage          String    @default("Initializing...") @db.Text
+  collectedLeads           Int       @default(0)
+  totalLeadsCollected      Int       @default(0)
+  errorMessage             String?   @db.Text
+  startedAt                DateTime?
+  completedAt              DateTime?
+  retryCount               Int       @default(0)
+  maxRetries               Int       @default(3)
+  estimatedDuration        Int       @default(0)
+  actualDuration           Int?
+  includeGoogleAdsAnalysis Boolean   @default(false)
+  analyzeLeads             Boolean   @default(false)
+  userId                   String?   @db.VarChar(255)
+  user                     User?     @relation(fields: [userId], references: [id])
+  leadId                   String?   @db.VarChar(255)
+  emailSchedule            Json?
+  nextEmailDue             DateTime?
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+
+  @@index([jobId])
+  @@index([status])
+  @@index([userId])
+  @@index([status, priority, createdAt])
+  @@index([type, status])
+}
+
+// Search Job Model
+model SearchJob {
+  id           String    @id @default(cuid())
+  service      String    @db.VarChar(255)
+  location     String    @db.VarChar(255)
+  userId       String    @db.VarChar(255)
+  user         User      @relation(fields: [userId], references: [id])
+  status       String    @default("pending") @db.VarChar(50)
+  progress     Int       @default(0)
+  leadsFound   Int       @default(0)
+  errorMessage String?   @db.Text
+  startedAt    DateTime?
+  completedAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([status, createdAt])
+  @@index([userId, status])
+}
+
+// Temporary Lead Model
+model TemporaryLead {
+  id               String   @id @default(cuid())
+  name             String   @db.VarChar(255)
+  company          String   @db.VarChar(255)
+  location         String   @db.VarChar(255)
+  userId           String   @db.VarChar(255)
+  user             User     @relation(fields: [userId], references: [id])
+  website          String?  @db.VarChar(500)
+  email            String?  @db.VarChar(255)
+  phone            String?  @db.VarChar(50)
+  linkedinProfile  String?  @db.VarChar(500)
+  googleAds        Boolean  @default(false)
+  googleAdsChecked Boolean  @default(false)
+  organicRanking   Int?
+  source           String?  @default("serp-api") @db.VarChar(100)
+  searchService    String?  @db.VarChar(255)
+  searchLocation   String?  @db.VarChar(255)
+  address          String?  @db.VarChar(500)
+  rating           String?  @db.VarChar(20)
+  reviews          String?  @db.VarChar(50)
+  isAuthCheck      Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([name])
+  @@index([company])
+  @@index([userId])
+  @@index([isAuthCheck, createdAt])
+}
+
+// Availability Model
+model Availability {
+  id           String   @id @default(cuid())
+  userId       String   @unique @db.VarChar(255)
+  user         User     @relation(fields: [userId], references: [id])
+  workingDays  Json // Array of day availability objects
+  timezone     String   @default("Europe/Amsterdam") @db.VarChar(100)
+  slotDuration Int      @default(30)
+  bufferTime   Int      @default(15)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([userId, isActive])
+}
+
+// Company Settings Model
+model CompanySettings {
+  id                       String   @id @default(cuid())
+  userId                   String?  @unique @db.VarChar(255)
+  user                     User?    @relation(fields: [userId], references: [id])
+  type                     String?  @db.VarChar(50)
+  companyName              String   @db.VarChar(255)
+  service                  String   @db.VarChar(255)
+  industry                 String?  @db.VarChar(100)
+  senderName               String   @db.VarChar(255)
+  senderEmail              String   @db.VarChar(255)
+  websiteUrl               String?  @db.VarChar(500)
+  logoUrl                  String?  @db.VarChar(500)
+  defaultOutreachRecipient String?  @default("lead") @db.VarChar(20)
+  defaultSenderIdentity    String?  @default("company") @db.VarChar(20)
+  emailTimings             Json? // Array of email timing objects
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  @@index([userId])
+  @@index([type])
+}
+
+// AI Settings Model
+model AISettings {
+  id                 String   @id @default(cuid())
+  userId             String   @unique @db.VarChar(255)
+  isEnabled          Boolean  @default(true)
+  autoReplyEnabled   Boolean  @default(false)
+  autoSendThreshold  Int      @default(85)
+  defaultTone        String   @default("professional") @db.VarChar(50)
+  includeCompanyInfo Boolean  @default(true)
+  maxResponseLength  Int      @default(300)
+  customInstructions String?  @db.Text
+  responsePrompt     String?  @db.Text
+  companyName        String?  @default("QuasarSEO") @db.VarChar(255)
+  senderName         String?  @default("Team QuasarSEO") @db.VarChar(255)
+  senderEmail        String?  @default("info@quasarseo.nl") @db.VarChar(255)
+  signature          String?  @default("Warmly,\nTeam QuasarSEO") @db.Text
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([userId])
+}
+
+// Automation AI Settings Model - Stores AI Training Data
+model AutomationAISetting {
+  id                      String   @id @default(cuid())
+  userId                  String   @unique @db.VarChar(255)
+  user                    User     @relation(fields: [userId], references: [id])
+  
+  // Training Data stored as JSON arrays
+  uploadedFiles           Json?    // Array of uploaded file objects with summaries
+  trainingTexts           Json?    // Array of manual training text entries
+  messageExamples         Json?    // Array of LinkedIn message examples
+  commentExamples         Json?    // Array of LinkedIn comment examples
+  connectMessageExamples  Json?    // Array of connection request examples
+  
+  // Training Statistics
+  examplesCount           Int      @default(0)
+  lastTrained             DateTime?
+  
+  // AI Personality Settings
+  defaultTone             String?  @default("professional") @db.VarChar(50)
+  messageLength           String?  @default("Short") @db.VarChar(50)
+  emojiUsage              String?  @default("Minimal") @db.VarChar(50)
+  customInstructions      String?  @db.Text
+  
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@index([userId])
+}
+
+// Campaign Model - LinkedIn Automation Campaigns
+model Campaign {
+  id                      String   @id @default(cuid())
+  userId                  String   @db.VarChar(255)
+  user                    User     @relation(fields: [userId], references: [id])
+  
+  // Campaign Basic Info
+  name                    String   @db.VarChar(255)
+  goal                    String   @db.VarChar(100)
+  campaignBrief           String?  @db.Text
+  status                  String   @default("draft") @db.VarChar(50) // draft, active, paused, completed
+  
+  // LinkedIn Account
+  linkedInAccountId       String?  @db.VarChar(255)
+  linkedInAccountName     String?  @db.VarChar(255)
+  
+  // Targeting Criteria
+  targetJobTitles         String[] // Array of job titles
+  targetIndustries        String[] // Array of industries
+  targetCompanySizes      String[] // Array of company sizes (1-10, 11-50, etc.)
+  targetGeography         String?  @db.VarChar(500)
+  targetSeniority         String?  @db.VarChar(100)
+  targetFunction          String?  @db.VarChar(100)
+  targetKeywords          String?  @db.Text
+  targetConnectionDegree  String?  @default("2nd") @db.VarChar(50) // 2nd, 3rd, Both
+  linkedInSearchUrl       String?  @db.Text
+  
+  // Message Templates
+  connectionMessage       String?  @db.Text
+  followUpMessage         String?  @db.Text
+  followUpDelay           Int?     @default(3) // Days to wait before follow-up
+  
+  // Campaign Settings
+  dailyConnectionLimit    Int      @default(20)
+  dailyMessageLimit       Int      @default(20)
+  dailyCommentLimit       Int      @default(12)
+  dailyReplyLimit         Int      @default(20)
+  delaySpeed              String?  @default("medium") @db.VarChar(50) // slow, medium, fast
+  excludePreviouslyContacted Boolean @default(true)
+  excludeKeywords         String?  @db.Text
+  aiReplyMode             String   @default("manual") @db.VarChar(50) // manual, auto, off
+  autoConnect             Boolean  @default(true)
+  autoComment             Boolean  @default(true)
+  autoCommentType         Boolean  @default(true)
+  autoMessage             Boolean  @default(true)
+  autoReact               Boolean  @default(true)
+  autoReply               Boolean  @default(true)
+  currentKeyword          String?  @db.VarChar(255)
+  keywordExecutionStatus  String?  @default("idle") @db.VarChar(30) // idle, active, completed
+  keywordWorkflow         Json? // Keyword list + per-keyword progress state
+  automationStrategy      Json? // Current AI strategy summary used by automation
+  
+  // Campaign Stats
+  totalLeads              Int      @default(0)
+  leadsProcessed          Int      @default(0)
+  leadsPending            Int      @default(0)
+  connectionsInvited      Int      @default(0)
+  connectionsAccepted     Int      @default(0)
+  messagesReplied         Int      @default(0)
+  meetingsBooked          Int      @default(0)
+  acceptanceRate          Float?
+  replyRate               Float?
+  
+  // Campaign Execution
+  executionStatus         String?  @default("not_started") @db.VarChar(50) // not_started, running, finding_leads, finished, failed
+  startedAt               DateTime?
+  pausedAt                DateTime?
+  completedAt             DateTime?
+  lastActivityAt          DateTime?
+  
+  // Additional Data
+  tags                    String[]
+  notes                   String?  @db.Text
+  
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  // Relations
+  linkedInLeads           LinkedInLead[]
+  linkedInPosts           LinkedInPost[]
+  linkedInConversations   LinkedInConversation[]
+  tempLeadBatches         TempLeadBatch[]
+  intelligentBrainRuns    IntelligentBrainRun[]
+  intelligentNextMoves    IntelligentNextMove[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([userId, status])
+  @@index([createdAt])
+}
+
+// Temp Lead Batch Model - staged keyword leads before AI ranking + final insert
+model TempLeadBatch {
+  id            String   @id @default(cuid())
+  campaignId    String   @db.VarChar(255)
+  campaign      Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  userId        String   @db.VarChar(255)
+  keyword       String?  @db.VarChar(255)
+  sourceFile    String?  @db.VarChar(500)
+  status        String   @default("pending") @db.VarChar(30) // pending, processing_ai, completed, failed
+  totalLeads    Int      @default(0)
+  selectedLeads Int      @default(0)
+  modelUsed     String?  @db.VarChar(100)
+  payload       Json?
+  result        Json?
+  errorMessage  String?  @db.Text
+  processedAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([campaignId])
+  @@index([userId])
+  @@index([keyword])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// Automation Log Model - Real-time logs from automation worker
+model AutomationLog {
+  id         String   @id @default(cuid())
+  campaignId String   @db.VarChar(255)
+  userId     String?  @db.VarChar(255)
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  level      String   @default("info") @db.VarChar(20)   // info, success, warning, error
+  category   String   @default("general") @db.VarChar(50) // general, ai_brain, linkedin, search, engagement, database, screenshot
+  message    String   @db.Text
+  metadata   Json?
+  timestamp  DateTime @default(now())
+
+  @@index([campaignId])
+  @@index([campaignId, timestamp])
+  @@index([userId])
+  @@index([userId, timestamp])
+  @@index([level])
+}
+
+// Campaign-level Intelligent Brain runs for AI testing
+model IntelligentBrainRun {
+  id                 String   @id @default(cuid())
+  campaignId         String   @db.VarChar(255)
+  campaign           Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  userId             String   @db.VarChar(255)
+  model              String   @db.VarChar(100)
+  status             String   @default("success") @db.VarChar(30) // success, failed
+  prompt             String   @db.Text
+  response           String   @db.Text
+  recommendedActions Json?
+  nextMoves          IntelligentNextMove[]
+  errorMessage       String?  @db.Text
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([campaignId])
+  @@index([userId])
+  @@index([campaignId, createdAt])
+}
+
+// Campaign-level Intelligent Brain next moves for execution planning
+model IntelligentNextMove {
+  id                   String              @id @default(cuid())
+  campaignId           String              @db.VarChar(255)
+  campaign             Campaign            @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  intelligentBrainRunId String             @db.VarChar(255)
+  intelligentBrainRun  IntelligentBrainRun @relation(fields: [intelligentBrainRunId], references: [id], onDelete: Cascade)
+  userId               String              @db.VarChar(255)
+  moveType             String              @db.VarChar(50) // keyword_search, linkedin_search, follow, comment, message, connect_request, profile_view, endorse, invite_to_follow, reply, sequence_followup, safety_review, optimize_profile
+  title                String              @db.VarChar(255)
+  reason               String              @db.Text
+  priority             String              @default("medium") @db.VarChar(20) // high, medium, low
+  status               String              @default("queued") @db.VarChar(20) // queued, approved, executed, skipped, failed
+  channel              String?             @db.VarChar(30)
+  actionType           String?             @db.VarChar(30)
+  draftText            String?             @db.Text
+  metadata             Json?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  @@index([campaignId])
+  @@index([userId])
+  @@index([intelligentBrainRunId])
+  @@index([campaignId, status])
+  @@index([campaignId, createdAt])
+}
+
+// LinkedIn Lead Model - Leads collected from LinkedIn automation
+model LinkedInLead {
+  id                    String   @id @default(cuid())
+  campaignId            String   @db.VarChar(255)
+  campaign              Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  userId                String   @db.VarChar(255)
+  
+  // LinkedIn Profile Data
+  linkedInUrl           String   @db.VarChar(500)
+  fullName              String   @db.VarChar(255)
+  firstName             String?  @db.VarChar(100)
+  lastName              String?  @db.VarChar(100)
+  headline              String?  @db.VarChar(500)
+  profilePictureUrl     String?  @db.VarChar(500)
+  
+  // Professional Information
+  currentCompany        String?  @db.VarChar(255)
+  currentPosition       String?  @db.VarChar(255)
+  industry              String?  @db.VarChar(100)
+  location              String?  @db.VarChar(255)
+  connectionDegree      String?  @db.VarChar(20) // 1st, 2nd, 3rd
+  
+  // Contact Information
+  email                 String?  @db.VarChar(255)
+  phone                 String?  @db.VarChar(50)
+  
+  // Outreach Status
+  status                String   @default("pending") @db.VarChar(50) // pending, invited, connected, messaged, replied, meeting_booked, not_interested
+  connectionStatus      String   @default("not_sent") @db.VarChar(50) // not_sent, pending, accepted, rejected
+  messageStatus         String   @default("not_sent") @db.VarChar(50) // not_sent, sent, replied, no_reply
+  
+  // Outreach Tracking
+  connectionSentAt      DateTime?
+  connectionAcceptedAt  DateTime?
+  connectionRejectedAt  DateTime?
+  firstMessageSentAt    DateTime?
+  firstReplyReceivedAt  DateTime?
+  lastMessageSentAt     DateTime?
+  lastReplyReceivedAt   DateTime?
+  meetingBookedAt       DateTime?
+  
+  // Message Content
+  connectionMessage     String?  @db.Text
+  followUpMessages      Json? // Array of message objects
+  conversationHistory   Json? // Array of conversation messages
+  
+  // Engagement Metrics
+  messagesSent          Int      @default(0)
+  messagesReceived      Int      @default(0)
+  profileViews          Int      @default(0)
+  
+  // Lead Scoring
+  leadScore             Int?     @default(0) // 0-100
+  engagementLevel       String?  @default("cold") @db.VarChar(20) // cold, warm, hot
+  priority              String?  @default("medium") @db.VarChar(20) // low, medium, high
+  
+  // Additional Data
+  tags                  String[]
+  notes                 String?  @db.Text
+  customFields          Json? // Additional custom data
+  
+  // Automation Metadata
+  automationSource      String   @default("linkedin_search") @db.VarChar(100)
+  searchQuery           String?  @db.Text
+  collectedAt           DateTime @default(now())
+  lastActivityAt        DateTime?
+  
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([campaignId])
+  @@index([userId])
+  @@index([status])
+  @@index([connectionStatus])
+  @@index([messageStatus])
+  @@index([linkedInUrl])
+  @@index([email])
+  @@index([campaignId, status])
+  @@index([userId, status])
+  @@index([collectedAt])
+  @@index([lastActivityAt])
+}
+
+// LinkedIn Post Model - Posts collected from LinkedIn content/keyword search
+model LinkedInPost {
+  id            String   @id @default(cuid())
+  campaignId    String   @db.VarChar(255)
+  campaign      Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  userId        String   @db.VarChar(255)
+
+  // Author Info
+  authorName    String   @db.VarChar(500)
+  authorRole    String?  @db.Text
+  authorCompany String?  @db.VarChar(500)
+  isCompanyPost Boolean  @default(false)
+
+  // Post Content
+  caption       String   @db.Text
+  postUrl       String?  @db.Text
+
+  // Search Metadata
+  keyword       String?  @db.VarChar(255)
+
+  // Action Status
+  reacted       Boolean  @default(false)
+  commented     Boolean  @default(false)
+  connected     Boolean  @default(false)
+  followed      Boolean  @default(false)
+  messageSent   Boolean  @default(false)
+
+  // AI Generated Actions
+  suggestedReaction        String?  @db.VarChar(50)
+  suggestedComment         String?  @db.Text
+  suggestedFollowUpMessage String?  @db.Text
+  aiActionsGenerated       Boolean  @default(false)
+  actionPriority           Int?
+  plannedActionAt          DateTime?
+  actionPlanGeneratedAt    DateTime?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([campaignId])
+  @@index([userId])
+  @@index([createdAt])
+  @@index([aiActionsGenerated])
+  @@index([plannedActionAt])
+}
+
+// Email Open Tracking Model - tracks when sent emails are opened by recipients
+model EmailOpenTracking {
+  id             String    @id @default(cuid())
+  leadId         String    @db.VarChar(255)
+  userId         String?   @db.VarChar(255)
+  stage          String?   @db.VarChar(50)
+  recipientEmail String?   @db.VarChar(255)
+  subject        String?   @db.Text
+  opened         Boolean   @default(false)
+  openedAt       DateTime?
+  openCount      Int       @default(0)
+  createdAt      DateTime  @default(now())
+
+  @@index([leadId])
+  @@index([userId])
+  @@index([opened])
+}
+
+// SMTP Daily Usage Model - tracks per-SMTP-account daily send counts for rotation
+model SmtpDailyUsage {
+  id           String   @id @default(cuid())
+  userId       String   @db.VarChar(255)
+  smtpUser     String   @db.VarChar(255)
+  smtpHost     String   @db.VarChar(255)
+  date         DateTime @db.Date
+  sentCount    Int      @default(0)
+  lastSentAt   DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([userId, smtpUser, smtpHost, date])
+  @@index([userId, date])
+  @@index([userId, smtpUser, date])
+}
+
+// LinkedIn Conversation Model - tracks follow-up messages sent + replies received
+model LinkedInConversation {
+  id                String    @id @default(cuid())
+  userId            String    @db.VarChar(255)
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaignId        String?   @db.VarChar(255)
+  campaign          Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  linkedInPostId    String?   @db.VarChar(255)
+
+  // Contact info
+  contactName       String    @db.VarChar(500)
+  contactRole       String?   @db.Text
+  contactCompany    String?   @db.VarChar(500)
+  contactProfileUrl String?   @db.Text
+  contactInitials   String?   @db.VarChar(10)
+
+  // Lead classification: warm | hot | meeting | cold
+  leadStatus        String    @default("warm") @db.VarChar(50)
+
+  // Messages JSON array: [{id,sentByUs,text,timestamp}]
+  messages          Json      @default("[]")
+
+  // AI draft reply
+  aiDraftReply      String?   @db.Text
+
+  // Flags
+  hasUnread         Boolean   @default(false)
+  autoSend          Boolean   @default(false)
+  repliedByUs       Boolean   @default(false)
+  autoReplyEnabled  Boolean   @default(false)
+
+  lastMessageAt     DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([campaignId])
+  @@index([hasUnread])
+  @@index([lastMessageAt])
+}
