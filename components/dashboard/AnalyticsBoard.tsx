@@ -69,7 +69,7 @@ export default function AnalyticsBoard() {
 
       // Use real email statistics or fallback to demo data
       let emailStats;
-      if (emailStatsData.success && emailStatsData.data.emailStats) {
+      if (emailStatsData.success && emailStatsData.data?.emailStats) {
         emailStats = emailStatsData.data.emailStats;
         console.log(`📧 Using real email data: ${emailStatsData.data.totalEmailsSent} emails sent, ${emailStatsData.data.responseRate}% response rate`);
       } else {
