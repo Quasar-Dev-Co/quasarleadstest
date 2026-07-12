@@ -3,7 +3,7 @@
 AI-powered lead generation, email automation, and CRM platform built with Next.js 16, React 19, TypeScript, Prisma, and PostgreSQL.
 
 > All detailed documentation files are in the [`docs/`](./docs) folder. See the [Documentation Index](#documentation-index) below.
-
+hello
 ---
 
 ## What QuasarLeads Does
