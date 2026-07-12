@@ -7,7 +7,7 @@ import {
 
 type UnknownRecord = Record<string, unknown>;
 
-export type EnrichmentProvider = "serpapi" | "openai";
+export type EnrichmentProvider = "serpapi" | "openai" | "gemini";
 
 export type CompanyEnrichmentInput = {
   companyName: string;

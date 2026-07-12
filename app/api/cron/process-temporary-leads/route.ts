@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import {
-	enrichCompanyProfilesBatch,
-	resolveCompanyEnrichmentCredentials,
-} from '@/lib/companyEnrichment';
+	enrichCompanyProfilesWithGemini,
+	resolveGeminiEnrichmentCredentials,
+	GEMINI_ENRICHMENT_GROUP_SIZE,
+} from '@/lib/geminiEnrichment';
 
 export const runtime = 'nodejs';
-const ENRICHMENT_GROUP_SIZE = 5;
+const ENRICHMENT_GROUP_SIZE = GEMINI_ENRICHMENT_GROUP_SIZE; // 10 companies per Gemini interaction
 const SERPAPI_QUOTA_COOLDOWN_MINUTES = 30;
 const SERPAPI_QUOTA_ERROR_PATTERN = /out of searches|quota|rate limit|too many requests|insufficient|429/i;
 
@@ -27,9 +28,9 @@ type Enriched = {
 	executive_email?: string | null;
 };
 
-// GET endpoint now uses batch processing with batchSize=5 for SerpApi AI Mode table enrichment.
+// GET endpoint uses batch processing with batchSize=10 for Gemini Google Search enrichment.
 export async function GET(request: NextRequest) {
-	// Default to processing 5 leads for GET (cron job), but allow override via query param
+	// Default to processing 10 leads for GET (cron job), but allow override via query param
 	const searchParams = request.nextUrl.searchParams;
 	const requestedBatchSize = parseInt(searchParams.get('batchSize') || String(ENRICHMENT_GROUP_SIZE), 10);
 	const batchSize = Math.max(1, Math.min(50, Number.isFinite(requestedBatchSize) ? requestedBatchSize : ENRICHMENT_GROUP_SIZE));
@@ -48,7 +49,7 @@ export async function GET(request: NextRequest) {
 	return POST(mockRequest);
 }
 
-// Batch enrichment endpoint: process N temporary leads at a time (default 5)
+// Batch enrichment endpoint: process N temporary leads at a time (default 10) via Gemini
 export async function POST(request: NextRequest) {
 	try {
 		const body = await request.json().catch(() => ({} as any));
@@ -101,10 +102,10 @@ export async function POST(request: NextRequest) {
 			const pauseUntilMs = Date.parse(pauseUntilRaw);
 			if (!Number.isNaN(pauseUntilMs) && pauseUntilMs > Date.now()) {
 				const remaining = await prisma.temporaryLead.count({ where: { isAuthCheck: false, userId } });
-				console.warn(`⏸️ Skipping auth-check for user ${userId} due to SerpApi quota cooldown until ${pauseUntilRaw}`);
+				console.warn(`⏸️ Skipping auth-check for user ${userId} due to enrichment quota cooldown until ${pauseUntilRaw}`);
 				return NextResponse.json({
 					success: true,
-					message: `SerpApi quota cooldown active until ${pauseUntilRaw}`,
+					message: `Enrichment quota cooldown active until ${pauseUntilRaw}`,
 					stats: {
 						requested: temps.length,
 						processed: 0,
@@ -123,17 +124,17 @@ export async function POST(request: NextRequest) {
 					details: temps.map((t) => ({
 						company: t.company,
 						status: 'skipped' as const,
-						reason: `Deferred: SerpApi quota cooldown until ${pauseUntilRaw}`,
+						reason: `Deferred: enrichment quota cooldown until ${pauseUntilRaw}`,
 					})),
 				});
 			}
 		}
 
-		const availableKeys = resolveCompanyEnrichmentCredentials(credentials);
-		if (availableKeys.serpApiKeys.length === 0) {
-			console.error(`❌ Missing SERPAPI_KEY for user ${userId}`);
+		const geminiCreds = resolveGeminiEnrichmentCredentials(credentials);
+		if (!geminiCreds.geminiApiKey) {
+			console.error(`❌ Missing GEMINI_API_KEY for user ${userId}`);
 			return NextResponse.json(
-				{ success: false, error: `Missing SERPAPI_KEY for user ${userId}` },
+				{ success: false, error: `Missing GEMINI_API_KEY for user ${userId}. Add it in Account Settings > Credentials.` },
 				{ status: 400 }
 			);
 		}
@@ -236,13 +237,9 @@ export async function POST(request: NextRequest) {
 					attemptedIndexes.add(item.index);
 				}
 
-				const batch = await enrichCompanyProfilesBatch(
+				const batch = await enrichCompanyProfilesWithGemini(
 					batchInput,
-					credentials,
-					{
-						preferredProvider: 'serpapi',
-						allowFallback: false,
-					}
+					credentials
 				);
 
 				for (const enriched of batch.results) {
@@ -265,7 +262,7 @@ export async function POST(request: NextRequest) {
 				if (quotaFailure) {
 					quotaExhausted = true;
 					quotaErrorMessage = quotaFailure.error;
-					console.error(`❌ SerpApi quota exhausted. Stopping further auth-check batches: ${quotaErrorMessage}`);
+					console.error(`❌ Enrichment quota exhausted. Stopping further auth-check batches: ${quotaErrorMessage}`);
 				}
 			} catch (error: any) {
 				const errMessage = error?.message || 'Unexpected batch enrichment error';
@@ -280,7 +277,7 @@ export async function POST(request: NextRequest) {
 				if (isSerpApiQuotaError(errMessage)) {
 					quotaExhausted = true;
 					quotaErrorMessage = errMessage;
-					console.error(`❌ SerpApi quota exhausted. Stopping further auth-check batches: ${quotaErrorMessage}`);
+					console.error(`❌ Enrichment quota exhausted. Stopping further auth-check batches: ${quotaErrorMessage}`);
 				}
 			}
 		}
@@ -302,7 +299,7 @@ export async function POST(request: NextRequest) {
 			});
 
 			console.warn(
-				`⏸️ Set SerpApi quota cooldown for user ${userId} until ${pauseUntil}. Remaining leads will stay pending.`
+				`⏸️ Set enrichment quota cooldown for user ${userId} until ${pauseUntil}. Remaining leads will stay pending.`
 			);
 		}
 
@@ -323,7 +320,7 @@ export async function POST(request: NextRequest) {
 					company: t.company,
 					status: 'skipped',
 					reason: quotaExhausted
-						? `Deferred: SerpApi quota exhausted (${quotaErrorMessage || 'out of searches'})`
+						? `Deferred: enrichment quota exhausted (${quotaErrorMessage || 'out of searches'})`
 						: 'Deferred: not attempted in this run',
 				});
 				continue;

@@ -541,7 +541,7 @@ const LeadsCollection = () => {
     };
 
     // Validate required credentials before starting lead collection.
-    // Order is intentional: SERPAPI -> OpenAI -> SMTP -> IMAP.
+    // Order is intentional: SERPAPI (Google Maps discovery) -> Gemini (enrichment) -> OpenAI -> SMTP -> IMAP.
     const checkCollectionCredentials = async (): Promise<{ ok: boolean; missing: string[]; group?: string; error?: string }> => {
         try {
             const authHeader = auth.getAuthHeader();
@@ -572,6 +572,7 @@ const LeadsCollection = () => {
                     if (typeof account?.value === 'string' && account.value.trim()) return account.value.trim();
                     if (typeof account?.SERPAPI_KEY === 'string' && account.SERPAPI_KEY.trim()) return account.SERPAPI_KEY.trim();
                     if (typeof account?.OPENAI_API_KEY === 'string' && account.OPENAI_API_KEY.trim()) return account.OPENAI_API_KEY.trim();
+                    if (typeof account?.GEMINI_API_KEY === 'string' && account.GEMINI_API_KEY.trim()) return account.GEMINI_API_KEY.trim();
                 }
                 return '';
             };
@@ -598,6 +599,7 @@ const LeadsCollection = () => {
             const creds = {
                 ...rawCreds,
                 SERPAPI_KEY: resolveFirstApiKey('SERPAPI_KEY', 'SERPAPI_ACCOUNTS'),
+                GEMINI_API_KEY: resolveFirstApiKey('GEMINI_API_KEY', 'GEMINI_ACCOUNTS'),
                 OPENAI_API_KEY: resolveFirstApiKey('OPENAI_API_KEY', 'OPENAI_ACCOUNTS'),
                 SMTP_HOST: String(rawCreds.SMTP_HOST || firstSmtp?.host || '').trim(),
                 SMTP_PORT: String(rawCreds.SMTP_PORT || firstSmtp?.port || '').trim(),
@@ -607,6 +609,7 @@ const LeadsCollection = () => {
 
             const checks = [
                 { group: 'SERPAPI', keys: ['SERPAPI_KEY'] },
+                { group: 'Gemini', keys: ['GEMINI_API_KEY'] },
                 { group: 'OpenAI', keys: ['OPENAI_API_KEY'] },
                 { group: 'SMTP', keys: ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASSWORD'] },
                 { group: 'IMAP', keys: ['IMAP_HOST', 'IMAP_PORT', 'IMAP_USER', 'IMAP_PASSWORD'] },
@@ -681,7 +684,7 @@ const LeadsCollection = () => {
             
             // Always use new TemporaryLead system
             const apiEndpoint = '/api/temporary-leads/search';
-            const analysisType = 'SerpAPI → TemporaryLead → OpenAI enrichment';
+            const analysisType = 'SerpAPI Google Maps → TemporaryLead → Gemini Google Search enrichment';
             
             setProgressMessage(`Queuing job for background processing with ${analysisType}...`);
 

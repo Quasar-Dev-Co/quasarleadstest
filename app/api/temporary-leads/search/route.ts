@@ -38,6 +38,7 @@ export async function POST(request: NextRequest) {
 				if (typeof account?.value === 'string' && account.value.trim()) return account.value.trim();
 				if (typeof account?.SERPAPI_KEY === 'string' && account.SERPAPI_KEY.trim()) return account.SERPAPI_KEY.trim();
 				if (typeof account?.OPENAI_API_KEY === 'string' && account.OPENAI_API_KEY.trim()) return account.OPENAI_API_KEY.trim();
+				if (typeof account?.GEMINI_API_KEY === 'string' && account.GEMINI_API_KEY.trim()) return account.GEMINI_API_KEY.trim();
 			}
 
 			return '';
@@ -64,6 +65,7 @@ export async function POST(request: NextRequest) {
 		const creds: Record<string, any> = {
 			...rawCreds,
 			SERPAPI_KEY: resolveFirstApiKey('SERPAPI_KEY', 'SERPAPI_ACCOUNTS'),
+			GEMINI_API_KEY: resolveFirstApiKey('GEMINI_API_KEY', 'GEMINI_ACCOUNTS'),
 			OPENAI_API_KEY: resolveFirstApiKey('OPENAI_API_KEY', 'OPENAI_ACCOUNTS'),
 			SMTP_HOST: String(rawCreds.SMTP_HOST || firstSmtp?.host || '').trim(),
 			SMTP_PORT: String(rawCreds.SMTP_PORT || firstSmtp?.port || '').trim(),
@@ -72,6 +74,7 @@ export async function POST(request: NextRequest) {
 		};
 		const requiredByGroup = [
 			{ group: 'SERPAPI', keys: ['SERPAPI_KEY'] },
+			{ group: 'Gemini', keys: ['GEMINI_API_KEY'] },
 			{ group: 'OpenAI', keys: ['OPENAI_API_KEY'] },
 			{ group: 'SMTP', keys: ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASSWORD'] },
 			{ group: 'IMAP', keys: ['IMAP_HOST', 'IMAP_PORT', 'IMAP_USER', 'IMAP_PASSWORD'] },
