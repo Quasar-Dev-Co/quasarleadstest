@@ -1,6 +1,16 @@
-// Mock localStorage and window for server-side rendering
+// Mock localStorage for server-side rendering.
+// IMPORTANT: Never assign `global.window` on the server. Doing so defeats
+// every `typeof window === "undefined"` guard in the app and in third-party
+// libraries (Radix UI, next-themes, react-hot-toast, sonner, etc.), causing
+// them to run browser-only code on the server and crash during SSR — which
+// surfaces as "Application error: a client-side exception has occurred".
+//
+// All browser API access in this codebase is already guarded with
+// `typeof window === "undefined"` and uses `window.localStorage` (not bare
+// `localStorage`), so this mock is not strictly required. It is kept only as
+// a harmless safety net for any code that might reference `localStorage`
+// directly.
 if (typeof window === 'undefined') {
-  // Create a mock localStorage object for SSR
   const mockLocalStorage = {
     getItem: () => null,
     setItem: () => {},
@@ -10,30 +20,8 @@ if (typeof window === 'undefined') {
     length: 0
   };
 
-  // Create a mock location object for SSR
-  const mockLocation = {
-    protocol: 'http:',
-    host: 'localhost:3000',
-    hostname: 'localhost',
-    port: '3000',
-    pathname: '/',
-    search: '',
-    hash: '',
-    href: 'http://localhost:3000/',
-    origin: 'http://localhost:3000',
-    ancestorOrigins: {} as unknown as DOMStringList,
-    assign: () => {},
-    reload: () => {},
-    replace: () => {}
-  } as unknown as Location;
-
   // @ts-ignore
   global.localStorage = mockLocalStorage;
-  // @ts-ignore
-  global.window = { 
-    localStorage: mockLocalStorage,
-    location: mockLocation
-  };
 }
 
 export {};

@@ -1,4 +1,3 @@
-import "@/lib/localStorage-mock";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
