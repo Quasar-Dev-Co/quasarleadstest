@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+let openaiClient: OpenAI | null = null;
+
+function getOpenai(): OpenAI {
+  if (!openaiClient) {
+    openaiClient = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+  }
+  return openaiClient;
+}
 
 const EMAIL_GENERATION_MODEL = 'gpt-5.4-nano';
 
@@ -52,7 +59,7 @@ Return ONLY valid JSON in this exact format:
   "signature": "HTML signature with placeholders"
 }`;
 
-    const completion = await openai.chat.completions.create({
+    const completion = await getOpenai().chat.completions.create({
       model: EMAIL_GENERATION_MODEL,
       messages: [
         {

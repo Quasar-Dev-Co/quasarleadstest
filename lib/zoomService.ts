@@ -351,4 +351,15 @@ export class ZoomService {
   }
 }
 
-export const zoomService = new ZoomService(); 
+// Lazy singleton so it doesn't instantiate at build time when env vars are absent.
+let _zoomServiceInstance: ZoomService | null = null;
+
+export const zoomService = new Proxy({} as ZoomService, {
+  get(_target, prop, receiver) {
+    if (!_zoomServiceInstance) {
+      _zoomServiceInstance = new ZoomService();
+    }
+    const value = Reflect.get(_zoomServiceInstance as object, prop, receiver);
+    return typeof value === 'function' ? value.bind(_zoomServiceInstance) : value;
+  },
+}) as ZoomService;

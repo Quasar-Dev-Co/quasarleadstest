@@ -70,6 +70,17 @@ export class GoogleCalendarService {
   }
 }
 
-export const googleCalendarService = new GoogleCalendarService();
+// Lazy singleton so it doesn't instantiate at build time when env vars are absent.
+let _googleCalendarServiceInstance: GoogleCalendarService | null = null;
+
+export const googleCalendarService = new Proxy({} as GoogleCalendarService, {
+  get(_target, prop, receiver) {
+    if (!_googleCalendarServiceInstance) {
+      _googleCalendarServiceInstance = new GoogleCalendarService();
+    }
+    const value = Reflect.get(_googleCalendarServiceInstance as object, prop, receiver);
+    return typeof value === 'function' ? value.bind(_googleCalendarServiceInstance) : value;
+  },
+}) as GoogleCalendarService;
 
 
