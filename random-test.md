@@ -1,7 +1,3 @@
-# Random Test File
+# Random Test
 
-This file was created as a simple markdown test for the requested Git branch push.
-
-- Branch: akash
-- Target repository: Quasar-Dev-Co/quasarleadstest
-- Created on: 2026-07-13
+This is a simple markdown test file created for the requested Git branch push.
