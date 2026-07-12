@@ -719,7 +719,14 @@ Return as JSON:
           ...(header ? { 'authorization': header } : {}),
         },
         body: JSON.stringify({
-          template: currentTemplate,
+          template: {
+            ...currentTemplate,
+            // Merge current editing state so the test email reflects unsaved edits too
+            subject: emailSubject || currentTemplate.subject,
+            contentPrompt: contentPrompt || (currentTemplate as any).contentPrompt || '',
+            emailSignature: emailSignature || (currentTemplate as any).emailSignature || '',
+            mediaLinks: mediaLinks || (currentTemplate as any).mediaLinks || '',
+          },
           testEmail,
           testLead,
           companySettings,
@@ -891,7 +898,9 @@ Return as JSON:
       errors.push(t('testCompanyRequired'));
     }
 
-    if (!currentTemplate.subject?.trim() || !currentTemplate.htmlContent?.trim()) {
+    // Accept either the new modular format (contentPrompt) or the legacy format (htmlContent)
+    const hasContent = (currentTemplate as any).contentPrompt?.trim() || currentTemplate.htmlContent?.trim();
+    if (!currentTemplate.subject?.trim() || !hasContent) {
       errors.push(t('saveTemplateFirst'));
     }
 
