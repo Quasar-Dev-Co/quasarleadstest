@@ -146,6 +146,7 @@ export default function AccountSettingsPage() {
   // Credentials state
   const [credentials, setCredentials] = useState({
     SERPAPI_KEY: "",
+    GEMINI_API_KEY: "",
     OPENAI_API_KEY: "",
     APIFY_TOKEN: "",
     APIFY_EMAIL_VERIFIER_ACTOR_ID: "",
@@ -441,7 +442,7 @@ export default function AccountSettingsPage() {
       }
       // Only accept known keys
       const allowedKeys = [
-        'SERPAPI_KEY','OPENAI_API_KEY','APIFY_TOKEN','APIFY_EMAIL_VERIFIER_ACTOR_ID','SMTP_HOST','SMTP_PORT','SMTP_USER','SMTP_PASSWORD',
+        'SERPAPI_KEY','GEMINI_API_KEY','OPENAI_API_KEY','APIFY_TOKEN','APIFY_EMAIL_VERIFIER_ACTOR_ID','SMTP_HOST','SMTP_PORT','SMTP_USER','SMTP_PASSWORD',
         'IMAP_HOST','IMAP_PORT','IMAP_USER','IMAP_PASSWORD','ZOOM_EMAIL','ZOOM_PASSWORD',
         'ZOOM_ACCOUNT_ID','ZOOM_CLIENT_ID','ZOOM_CLIENT_SECRET',
         'SERPAPI_ACCOUNTS','OPENAI_ACCOUNTS','SMTP_ACCOUNTS','IMAP_ACCOUNTS',
@@ -1071,6 +1072,27 @@ export default function AccountSettingsPage() {
                       </div>
                     ))}
                     <p className="text-xs text-muted-foreground">{t('firstAccountUsedAsPrimary')}</p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <Label>GEMINI_API_KEY</Label>
+                    <div className="relative">
+                      <Input
+                        type={showSecrets.GEMINI_API_KEY ? 'text' : 'password'}
+                        placeholder="Gemini API key"
+                        value={credentials.GEMINI_API_KEY}
+                        className="pr-10"
+                        onChange={(e) => setCredentials({ ...credentials, GEMINI_API_KEY: e.target.value })}
+                      />
+                      <button
+                        type="button"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                        onClick={() => setShowSecrets({ ...showSecrets, GEMINI_API_KEY: !showSecrets.GEMINI_API_KEY })}
+                      >
+                        {showSecrets.GEMINI_API_KEY ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Used for lead enrichment via Gemini 3.5 Flash with Google Search grounding.</p>
                   </div>
 
                   <div className="space-y-3">
