@@ -39,7 +39,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       }, { status: 400 });
     }
 
-    // Find associated lead or create a new one
+    // Find associated lead — only process replies from existing leads we've contacted.
+    // Do NOT create new leads from random incoming emails.
     let lead = await prisma.lead.findFirst({
       where: {
         email: {
@@ -49,47 +50,49 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       }
     });
 
-    let leadName: string;
-
-    if (lead) {
-      leadName = lead.name || leadEmail.split('@')[0].replace(/[.\-_]/g, ' ');
-
-      // Update lead status to 'replied' when they respond to our email
-      if (lead.status !== 'replied') {
-        const updatedLead = await prisma.lead.update({
-          where: { id: lead.id },
-          data: {
-            status: 'replied',
-            lastContactedAt: new Date()
-          }
-        });
-        lead = updatedLead;
-        console.log(`✅ Updated lead ${leadEmail} status to 'replied'`);
-      }
-    } else {
-      console.log(`⚠️ No lead found for email: ${leadEmail}. Creating a new one.`);
-      leadName = leadEmail.split('@')[0].replace(/[.\-_]/g, ' ');
-      lead = await prisma.lead.create({
-        data: {
-          name: leadName,
-          email: leadEmail.toLowerCase(),
-          company: leadEmail.split('@')[1] || 'Unknown',
-          location: 'Email Reply',
-          status: 'replied',
-          source: 'email-reply',
-          assignedTo: userId || undefined,
-          leadsCreatedBy: userId || undefined,
-        }
+    if (!lead) {
+      console.log(`⏭️ No existing lead found for ${leadEmail}. Skipping — not a reply to our outreach.`);
+      return NextResponse.json({
+        success: true,
+        skipped: true,
+        message: 'No existing lead for this sender. Email ignored.'
       });
-      console.log(`✅ Created new lead for: ${leadEmail} with status 'replied'`);
     }
+
+    let leadName: string;
+    leadName = lead.name || leadEmail.split('@')[0].replace(/[.\-_]/g, ' ');
 
     // Check if this is a reply to one of our 7 email sequence emails
     let isReplyToSequence = false;
     let originalEmailStage = null;
 
     const emailHistory = (lead.emailHistory as any[]) || [];
+
+    // Only accept replies that reference a messageId from an email we actually sent.
+    // This prevents random inbox emails from being treated as lead replies.
     if (emailHistory.length > 0) {
+      const sentMessageIds = new Set(
+        emailHistory
+          .map((entry: any) => String(entry?.messageId || '').trim())
+          .filter(Boolean)
+      );
+
+      const replyRef = String(inReplyTo || references || '').trim();
+      const refsList = replyRef.split(/\s+/).map((r) => r.trim()).filter(Boolean);
+
+      const matchesSentEmail =
+        sentMessageIds.size > 0 &&
+        refsList.some((ref) => sentMessageIds.has(ref));
+
+      if (!matchesSentEmail) {
+        console.log(`⏭️ Reply from ${leadEmail} does not reference any sent email messageId. Skipping.`);
+        return NextResponse.json({
+          success: true,
+          skipped: true,
+          message: 'Reply does not match any sent email. Ignored.'
+        });
+      }
+
       const emailStages = ['called_once', 'called_twice', 'called_three_times', 'called_four_times', 'called_five_times', 'called_six_times', 'called_seven_times'];
       const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
       const recentEmails = emailHistory.filter((email: any) =>
@@ -104,6 +107,27 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         originalEmailStage = recentEmails[recentEmails.length - 1].stage;
         console.log(`🎯 Detected reply to email sequence! Original stage: ${originalEmailStage}`);
       }
+    } else {
+      // Lead exists but has no email history — we never sent them an email, so this isn't a reply to our outreach.
+      console.log(`⏭️ Lead ${leadEmail} has no email history. Skipping — we never sent them an email.`);
+      return NextResponse.json({
+        success: true,
+        skipped: true,
+        message: 'Lead has no sent email history. Reply ignored.'
+      });
+    }
+
+    // Now that we've confirmed this is a genuine reply to our outreach, update lead status.
+    if (lead.status !== 'replied') {
+      const updatedLead = await prisma.lead.update({
+        where: { id: lead.id },
+        data: {
+          status: 'replied',
+          lastContactedAt: new Date()
+        }
+      });
+      lead = updatedLead;
+      console.log(`✅ Updated lead ${leadEmail} status to 'replied'`);
     }
 
     let conversationCount = 0;

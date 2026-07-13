@@ -61,6 +61,36 @@ function hasAnyImapConfigured(creds: Record<string, any>): boolean {
   return getConfiguredImapAccounts(creds).length > 0;
 }
 
+// Sender patterns that indicate automated/bounce/system emails, not real lead replies.
+const BLOCKED_SENDER_PATTERNS = [
+  'mailer-daemon',
+  'mailerdaemon',
+  'postmaster',
+  'no-reply',
+  'noreply',
+  'donotreply',
+  'do-not-reply',
+  'auto-reply',
+  'autoreply',
+  'bounces',
+  'bounce@',
+  'mailbot',
+  'bot@',
+  'notification@',
+  'alerts@',
+  'noreply@',
+  'mailer@',
+  'dmarc',
+  'feedback@',
+  'abuse@',
+  'spam@',
+];
+
+function isBlockedSender(email: string): boolean {
+  const lower = email.toLowerCase();
+  return BLOCKED_SENDER_PATTERNS.some((pattern) => lower.includes(pattern));
+}
+
 /**
  * Vercel Cron Job: Fetches incoming emails via IMAP for ALL users with IMAP credentials.
  * Reads from ALL configured IMAP accounts per user (multi-IMAP support).
@@ -238,6 +268,11 @@ async function processSingleImapAccount(
       const ownDomains = ['quasarseo.nl', 'testqlagain.vercel.app'];
       const fromDomain = fromEmail.split('@')[1]?.toLowerCase();
       if (fromDomain && ownDomains.includes(fromDomain)) {
+        continue;
+      }
+
+      // Skip automated/bounce/system emails that aren't real lead replies.
+      if (isBlockedSender(fromEmail)) {
         continue;
       }
 
