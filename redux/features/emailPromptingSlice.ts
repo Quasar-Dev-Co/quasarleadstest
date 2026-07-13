@@ -89,6 +89,7 @@ const initialState: EmailPromptingLanguageState = {
       testEmailPlaceholder: 'test@example.com',
       testName: 'Test Name*',
       testCompany: 'Test Company*',
+      testVariableValues: 'Variable Test Values',
       sendTest: 'Send Test',
       sending: 'Sending...',
       
@@ -299,6 +300,7 @@ const initialState: EmailPromptingLanguageState = {
       testEmailPlaceholder: 'test@voorbeeld.nl',
       testName: 'Test Naam*',
       testCompany: 'Test Bedrijf*',
+      testVariableValues: 'Variabele Testwaarden',
       sendTest: 'Test Verzenden',
       sending: 'Verzenden...',
       

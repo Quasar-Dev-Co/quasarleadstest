@@ -147,6 +147,18 @@ export default function EmailPrompting() {
     name: "John Doe",
     company: "Example Corp"
   });
+  // Custom test values for template variables (editable in the test email section)
+  const [customVariables, setCustomVariables] = useState<Record<string, string>>({
+    "{{OWNER_NAME}}": "John Smith",
+    "{{COMPANY_REVIEW}}": "4.5 stars with 127 positive reviews",
+    "{{SENDER_NAME}}": "QuasarLeads Team",
+    "{{SENDER_EMAIL}}": "",
+    "{{COMPANY_SERVICE}}": "AI-powered lead generation",
+    "{{TARGET_INDUSTRY}}": "Technology",
+    "{{WEBSITE_URL}}": "https://quasarleads.com",
+    "{{SERVICE_NAME}}": "Web Design",
+    "{{LOCATION_NAME}}": "Miami"
+  });
   const [bookingLink, setBookingLink] = useState<string>("");
   const [userId, setUserId] = useState<string>("");
 
@@ -729,6 +741,7 @@ Return as JSON:
           },
           testEmail,
           testLead,
+          customVariables,
           companySettings,
           userId: currentUserId
         }),
@@ -779,14 +792,16 @@ Return as JSON:
 
     const variables = {
       "{{LEAD_NAME}}": testLead.name,
-      "{{OWNER_NAME}}": "John Smith",
+      "{{OWNER_NAME}}": customVariables["{{OWNER_NAME}}"] || "John Smith",
       "{{COMPANY_NAME}}": testLead.company,
-      "{{COMPANY_REVIEW}}": "4.5 stars with 127 positive reviews",
-      "{{SENDER_NAME}}": companySettings.senderName,
-      "{{SENDER_EMAIL}}": companySettings.senderEmail,
-      "{{COMPANY_SERVICE}}": companySettings.service,
-      "{{TARGET_INDUSTRY}}": companySettings.industry,
-      "{{WEBSITE_URL}}": companySettings.websiteUrl
+      "{{COMPANY_REVIEW}}": customVariables["{{COMPANY_REVIEW}}"] || "4.5 stars with 127 positive reviews",
+      "{{SENDER_NAME}}": customVariables["{{SENDER_NAME}}"] || companySettings.senderName,
+      "{{SENDER_EMAIL}}": customVariables["{{SENDER_EMAIL}}"] || companySettings.senderEmail,
+      "{{COMPANY_SERVICE}}": customVariables["{{COMPANY_SERVICE}}"] || companySettings.service,
+      "{{TARGET_INDUSTRY}}": customVariables["{{TARGET_INDUSTRY}}"] || companySettings.industry,
+      "{{WEBSITE_URL}}": customVariables["{{WEBSITE_URL}}"] || companySettings.websiteUrl,
+      "{{SERVICE_NAME}}": customVariables["{{SERVICE_NAME}}"] || "",
+      "{{LOCATION_NAME}}": customVariables["{{LOCATION_NAME}}"] || ""
     };
 
     let preview = content;
@@ -1673,6 +1688,29 @@ Return as JSON:
                   className={`text-xs ${!isFieldValid(testLead.company) ? "border-red-300 focus:border-red-500" : ""}`}
                 />
               </div>
+
+              {/* Editable test values for all other template variables */}
+              <div className="space-y-1.5 pt-1">
+                <Label className="text-xs font-medium text-muted-foreground">
+                  {t('testVariableValues')}
+                </Label>
+                {TEMPLATE_VARIABLES(t)
+                  .filter(v => v.var !== "{{LEAD_NAME}}" && v.var !== "{{COMPANY_NAME}}")
+                  .map((variable) => (
+                    <div key={variable.var} className="grid grid-cols-[110px_1fr] gap-2 items-center">
+                      <code className="text-[10px] bg-muted px-1 py-0.5 rounded truncate" title={variable.description}>
+                        {variable.var}
+                      </code>
+                      <Input
+                        value={customVariables[variable.var] ?? ""}
+                        onChange={(e) => setCustomVariables(prev => ({ ...prev, [variable.var]: e.target.value }))}
+                        placeholder={variable.description}
+                        className="text-xs h-8"
+                      />
+                    </div>
+                  ))}
+              </div>
+
               <Button
                 onClick={sendTestEmail}
                 disabled={testing || !testEmail}

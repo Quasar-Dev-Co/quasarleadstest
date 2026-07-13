@@ -29,7 +29,7 @@ async function resolveOpenAiKeyForUser(userId: string): Promise<string> {
 }
 
 // Replace template variables with test lead / company values
-function replaceVariables(content: string, testLead: any, companySettings: any): string {
+function replaceVariables(content: string, testLead: any, companySettings: any, customVariables?: Record<string, string>): string {
   const variables: Record<string, string> = {
     '{{NAME}}': testLead.name || 'Test Lead',
     '{{LEAD_NAME}}': testLead.name || 'Test Lead',
@@ -46,6 +46,15 @@ function replaceVariables(content: string, testLead: any, companySettings: any):
     '{{SERVICE_NAME}}': '',
     '{{LOCATION_NAME}}': ''
   };
+
+  // Merge in user-supplied custom variable test values (overrides defaults)
+  if (customVariables && typeof customVariables === 'object') {
+    Object.entries(customVariables).forEach(([key, value]) => {
+      if (typeof key === 'string' && typeof value === 'string') {
+        variables[key] = value;
+      }
+    });
+  }
 
   let result = content;
   Object.entries(variables).forEach(([key, value]) => {
@@ -161,7 +170,8 @@ async function assembleFinalEmail(
   template: any,
   testLead: any,
   companySettings: any,
-  apiKey: string
+  apiKey: string,
+  customVariables?: Record<string, string>
 ): Promise<{ htmlContent: string; textContent: string }> {
   let finalHTML = '';
   let finalText = '';
@@ -176,12 +186,12 @@ async function assembleFinalEmail(
       apiKey
     );
 
-    const processedContent = replaceVariables(generatedContent, testLead, companySettings);
+    const processedContent = replaceVariables(generatedContent, testLead, companySettings, customVariables);
     const processedSignature = (template.emailSignature && template.emailSignature.trim())
-      ? replaceVariables(template.emailSignature, testLead, companySettings)
+      ? replaceVariables(template.emailSignature, testLead, companySettings, customVariables)
       : '';
     const processedMediaLinks = (template.mediaLinks && template.mediaLinks.trim())
-      ? replaceVariables(template.mediaLinks, testLead, companySettings)
+      ? replaceVariables(template.mediaLinks, testLead, companySettings, customVariables)
       : '';
 
     finalHTML = `
@@ -196,8 +206,8 @@ async function assembleFinalEmail(
     finalText = `${processedContent.replace(/<[^>]*>/g, '')}\n\n${processedMediaLinks ? 'Media: ' + processedMediaLinks.replace(/<[^>]*>/g, '') + '\n\n' : ''}${processedSignature.replace(/<[^>]*>/g, '')}`;
   } else {
     // Legacy format: use htmlContent/textContent directly
-    finalHTML = replaceVariables(template.htmlContent || '', testLead, companySettings);
-    finalText = replaceVariables(template.textContent || '', testLead, companySettings);
+    finalHTML = replaceVariables(template.htmlContent || '', testLead, companySettings, customVariables);
+    finalText = replaceVariables(template.textContent || '', testLead, companySettings, customVariables);
   }
 
   return { htmlContent: finalHTML, textContent: finalText };
@@ -205,7 +215,7 @@ async function assembleFinalEmail(
 
 export async function POST(request: NextRequest) {
   try {
-    const { template, testEmail, testLead, companySettings, userId } = await request.json();
+    const { template, testEmail, testLead, companySettings, userId, customVariables } = await request.json();
     if (!userId || !template || !testEmail) {
       return NextResponse.json({ success: false, error: 'Missing data' }, { status: 400 });
     }
@@ -218,14 +228,14 @@ export async function POST(request: NextRequest) {
 
     // Assemble the final email body from modular components (or legacy htmlContent)
     const apiKey = await resolveOpenAiKeyForUser(userId);
-    const { htmlContent, textContent } = await assembleFinalEmail(template, testLead, companySettings, apiKey);
+    const { htmlContent, textContent } = await assembleFinalEmail(template, testLead, companySettings, apiKey, customVariables);
 
     if (!htmlContent || !htmlContent.trim()) {
       return NextResponse.json({ success: false, error: 'Email body is empty. Please add content to the template first.' }, { status: 400 });
     }
 
     const subject = template.subject
-      ? replaceVariables(template.subject, testLead, companySettings)
+      ? replaceVariables(template.subject, testLead, companySettings, customVariables)
       : 'Test Email';
 
     const result = await emailService.sendEmailForUser(userId, {
