@@ -801,6 +801,25 @@ const LeadsCollection = () => {
         }
     };
     
+    // Resolve the display name + role for a lead.
+    // Priority: authInformation.owner_name -> authInformation.executive_name
+    //           -> companyOwner -> lead.name -> "not found"
+    const getLeadDisplayName = (lead: Lead): { name: string; role: string; isNotFound: boolean } => {
+        const ownerName = lead.authInformation?.owner_name?.trim();
+        if (ownerName) return { name: ownerName, role: 'Owner', isNotFound: false };
+
+        const executiveName = lead.authInformation?.executive_name?.trim();
+        if (executiveName) return { name: executiveName, role: 'Executive', isNotFound: false };
+
+        const companyOwnerName = lead.companyOwner?.trim();
+        if (companyOwnerName) return { name: companyOwnerName, role: 'Owner', isNotFound: false };
+
+        const leadName = lead.name?.trim();
+        if (leadName) return { name: leadName, role: '-', isNotFound: false };
+
+        return { name: String(t("notFound")), role: '-', isNotFound: true };
+    };
+
     const copyEmailToClipboard = async (event: React.MouseEvent, email: string) => {
         // Prevent event bubbling
         event.preventDefault();
@@ -2367,6 +2386,7 @@ const LeadsCollection = () => {
                                             </TableHead>
                                         )}
                                         <TableHead className="min-w-[150px]">{String(t("name"))}</TableHead>
+                                        <TableHead className="min-w-[100px]">{String(t("role"))}</TableHead>
                                         <TableHead className="min-w-[200px]">{String(t("company"))}</TableHead>
                                         <TableHead className="min-w-[120px]">{String(t("location"))}</TableHead>
                                         <TableHead className="min-w-[180px]">{String(t("email"))}</TableHead>
@@ -2392,16 +2412,31 @@ const LeadsCollection = () => {
                                                     </TableCell>
                                                 )}
                                                 <TableCell className="font-medium">
-                                                    <div className="flex items-center gap-2 max-w-[150px]">
-                                                        <span className="truncate" title={lead.name}>{lead.name}</span>
-                                                    </div>
+                                                    {(() => {
+                                                        const info = getLeadDisplayName(lead);
+                                                        return (
+                                                            <div className="flex items-center gap-2 max-w-[150px]">
+                                                                <span className={`truncate ${info.isNotFound ? 'italic text-muted-foreground' : ''}`} title={info.name}>{info.name}</span>
+                                                            </div>
+                                                        );
+                                                    })()}
+                                                </TableCell>
+                                                <TableCell>
+                                                    {(() => {
+                                                        const info = getLeadDisplayName(lead);
+                                                        return (
+                                                            <span className={`text-xs ${info.role === '-' ? 'text-muted-foreground' : 'text-muted-foreground'}`}>
+                                                                {info.role}
+                                                            </span>
+                                                        );
+                                                    })()}
                                                 </TableCell>
                                                 <TableCell>
                                                     <span className="truncate block max-w-[200px]" title={lead.company}>
                                                         {lead.company}
                                                     </span>
                                                 </TableCell>
-                                                
+
                                                 <TableCell>
                                                     <span className="truncate block max-w-[120px]" title={lead.location}>
                                                         {lead.location}
@@ -2460,7 +2495,7 @@ const LeadsCollection = () => {
                                         ))
                                     ) : (
                                         <TableRow>
-                                            <TableCell colSpan={isSelectionMode ? 11 : 10} className="text-center py-6 text-muted-foreground">
+                                            <TableCell colSpan={isSelectionMode ? 12 : 11} className="text-center py-6 text-muted-foreground">
                                                 {isRefreshing ? (
                                                     <div className="flex items-center justify-center gap-2">
                                                         <RotateCw className="h-4 w-4 animate-spin" />
@@ -2493,6 +2528,7 @@ const LeadsCollection = () => {
                                             </TableHead>
                                         )}
                                         <TableHead className="min-w-[150px]">{String(t("name"))}</TableHead>
+                                        <TableHead className="min-w-[100px]">{String(t("role"))}</TableHead>
                                         <TableHead className="min-w-[200px]">{String(t("company"))}</TableHead>
                                         <TableHead className="min-w-[120px]">{String(t("location"))}</TableHead>
                                         <TableHead className="min-w-[180px]">{String(t("email"))}</TableHead>
@@ -2516,16 +2552,31 @@ const LeadsCollection = () => {
                                                     </TableCell>
                                                 )}
                                                 <TableCell className="font-medium">
-                                                    <div className="flex items-center gap-2 max-w-[150px]">
-                                                        <span className="truncate" title={lead.name}>{lead.name}</span>
-                                                    </div>
+                                                    {(() => {
+                                                        const info = getLeadDisplayName(lead);
+                                                        return (
+                                                            <div className="flex items-center gap-2 max-w-[150px]">
+                                                                <span className={`truncate ${info.isNotFound ? 'italic text-muted-foreground' : ''}`} title={info.name}>{info.name}</span>
+                                                            </div>
+                                                        );
+                                                    })()}
+                                                </TableCell>
+                                                <TableCell>
+                                                    {(() => {
+                                                        const info = getLeadDisplayName(lead);
+                                                        return (
+                                                            <span className="text-xs text-muted-foreground">
+                                                                {info.role}
+                                                            </span>
+                                                        );
+                                                    })()}
                                                 </TableCell>
                                                 <TableCell>
                                                     <span className="truncate block max-w-[200px]" title={lead.company}>
                                                         {lead.company}
                                                     </span>
                                                 </TableCell>
-                                                
+
                                                 <TableCell>
                                                     <span className="truncate block max-w-[120px]" title={lead.location}>
                                                         {lead.location}
@@ -2582,7 +2633,7 @@ const LeadsCollection = () => {
                                         ))
                                     ) : (
                                         <TableRow>
-                                            <TableCell colSpan={isSelectionMode ? 10 : 9} className="text-center py-6 text-muted-foreground">
+                                            <TableCell colSpan={isSelectionMode ? 11 : 10} className="text-center py-6 text-muted-foreground">
                                                 {isRefreshing ? t("loadingLeads") : String(t("noLeadsFound"))}
                                             </TableCell>
                                         </TableRow>
@@ -2610,6 +2661,7 @@ const LeadsCollection = () => {
                                             </TableHead>
                                         )}
                                         <TableHead className="min-w-[150px]">{String(t("name"))}</TableHead>
+                                        <TableHead className="min-w-[100px]">{String(t("role"))}</TableHead>
                                         <TableHead className="min-w-[200px]">{String(t("company"))}</TableHead>
                                         <TableHead className="min-w-[120px]">{String(t("location"))}</TableHead>
                                         <TableHead className="min-w-[180px]">{String(t("email"))}</TableHead>
@@ -2633,16 +2685,31 @@ const LeadsCollection = () => {
                                                     </TableCell>
                                                 )}
                                                 <TableCell className="font-medium">
-                                                    <div className="flex items-center gap-2 max-w-[150px]">
-                                                        <span className="truncate" title={lead.name}>{lead.name}</span>
-                                                    </div>
+                                                    {(() => {
+                                                        const info = getLeadDisplayName(lead);
+                                                        return (
+                                                            <div className="flex items-center gap-2 max-w-[150px]">
+                                                                <span className={`truncate ${info.isNotFound ? 'italic text-muted-foreground' : ''}`} title={info.name}>{info.name}</span>
+                                                            </div>
+                                                        );
+                                                    })()}
+                                                </TableCell>
+                                                <TableCell>
+                                                    {(() => {
+                                                        const info = getLeadDisplayName(lead);
+                                                        return (
+                                                            <span className="text-xs text-muted-foreground">
+                                                                {info.role}
+                                                            </span>
+                                                        );
+                                                    })()}
                                                 </TableCell>
                                                 <TableCell>
                                                     <span className="truncate block max-w-[200px]" title={lead.company}>
                                                         {lead.company}
                                                     </span>
                                                 </TableCell>
-                                                
+
                                                 <TableCell>
                                                     <span className="truncate block max-w-[120px]" title={lead.location}>
                                                         {lead.location}
@@ -2699,7 +2766,7 @@ const LeadsCollection = () => {
                                         ))
                                     ) : (
                                         <TableRow>
-                                            <TableCell colSpan={isSelectionMode ? 10 : 9} className="text-center py-6 text-muted-foreground">
+                                            <TableCell colSpan={isSelectionMode ? 11 : 10} className="text-center py-6 text-muted-foreground">
                                                 {isRefreshing ? t("loadingLeads") : String(t("noLeadsFound"))}
                                             </TableCell>
                                         </TableRow>
@@ -2727,6 +2794,7 @@ const LeadsCollection = () => {
                                             </TableHead>
                                         )}
                                         <TableHead className="min-w-[150px]">{String(t("name"))}</TableHead>
+                                        <TableHead className="min-w-[100px]">{String(t("role"))}</TableHead>
                                         <TableHead className="min-w-[200px]">{String(t("company"))}</TableHead>
                                         <TableHead className="min-w-[120px]">{String(t("location"))}</TableHead>
                                         <TableHead className="min-w-[180px]">{String(t("email"))}</TableHead>
@@ -2750,16 +2818,31 @@ const LeadsCollection = () => {
                                                     </TableCell>
                                                 )}
                                                 <TableCell className="font-medium">
-                                                    <div className="flex items-center gap-2 max-w-[150px]">
-                                                        <span className="truncate" title={lead.name}>{lead.name}</span>
-                                                    </div>
+                                                    {(() => {
+                                                        const info = getLeadDisplayName(lead);
+                                                        return (
+                                                            <div className="flex items-center gap-2 max-w-[150px]">
+                                                                <span className={`truncate ${info.isNotFound ? 'italic text-muted-foreground' : ''}`} title={info.name}>{info.name}</span>
+                                                            </div>
+                                                        );
+                                                    })()}
+                                                </TableCell>
+                                                <TableCell>
+                                                    {(() => {
+                                                        const info = getLeadDisplayName(lead);
+                                                        return (
+                                                            <span className="text-xs text-muted-foreground">
+                                                                {info.role}
+                                                            </span>
+                                                        );
+                                                    })()}
                                                 </TableCell>
                                                 <TableCell>
                                                     <span className="truncate block max-w-[200px]" title={lead.company}>
                                                         {lead.company}
                                                     </span>
                                                 </TableCell>
-                                                
+
                                                 <TableCell>
                                                     <span className="truncate block max-w-[120px]" title={lead.location}>
                                                         {lead.location}
@@ -2811,7 +2894,7 @@ const LeadsCollection = () => {
                                         ))
                                     ) : (
                                         <TableRow>
-                                            <TableCell colSpan={isSelectionMode ? 8 : 7} className="text-center py-6 text-muted-foreground">
+                                            <TableCell colSpan={isSelectionMode ? 9 : 8} className="text-center py-6 text-muted-foreground">
                                                 {isRefreshing ? t("loadingLeads") : String(t("noRepliedLeadsFound"))}
                                             </TableCell>
                                         </TableRow>
@@ -2855,6 +2938,7 @@ const LeadsCollection = () => {
                                         </TableHead>
                                     )}
                                     <TableHead className="min-w-[150px]">{String(t("name"))}</TableHead>
+                                    <TableHead className="min-w-[100px]">{String(t("role"))}</TableHead>
                                     <TableHead className="min-w-[200px]">{String(t("company"))}</TableHead>
                                     <TableHead className="min-w-[120px]">{String(t("location"))}</TableHead>
                                     <TableHead className="min-w-[180px]">{String(t("email"))}</TableHead>
@@ -2879,9 +2963,24 @@ const LeadsCollection = () => {
                                                 </TableCell>
                                             )}
                                             <TableCell className="font-medium">
-                                                <div className="flex items-center gap-2 max-w-[150px]">
-                                                    <span className="truncate" title={lead.name}>{lead.name}</span>
-                                                </div>
+                                                {(() => {
+                                                    const info = getLeadDisplayName(lead);
+                                                    return (
+                                                        <div className="flex items-center gap-2 max-w-[150px]">
+                                                            <span className={`truncate ${info.isNotFound ? 'italic text-muted-foreground' : ''}`} title={info.name}>{info.name}</span>
+                                                        </div>
+                                                    );
+                                                })()}
+                                            </TableCell>
+                                            <TableCell>
+                                                {(() => {
+                                                    const info = getLeadDisplayName(lead);
+                                                    return (
+                                                        <span className="text-xs text-muted-foreground">
+                                                            {info.role}
+                                                        </span>
+                                                    );
+                                                })()}
                                             </TableCell>
                                             <TableCell>
                                                 <span className="truncate block max-w-[200px]" title={lead.company}>
@@ -2943,7 +3042,7 @@ const LeadsCollection = () => {
                                     ))
                                 ) : (
                                     <TableRow>
-                                        <TableCell colSpan={isSelectionMode ? 11 : 10} className="text-center py-6 text-muted-foreground">
+                                        <TableCell colSpan={isSelectionMode ? 12 : 11} className="text-center py-6 text-muted-foreground">
                                             {isRefreshing ? (
                                                 <div className="flex items-center justify-center gap-2">
                                                     <RotateCw className="h-4 w-4 animate-spin" />

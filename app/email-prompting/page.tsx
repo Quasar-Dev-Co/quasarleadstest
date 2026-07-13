@@ -1618,7 +1618,18 @@ Return as JSON:
 
             {/* Template Variables Reference */}
             <div className="space-y-2">
-              <Label className="text-sm font-medium">{t('availableVariables')}</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label className="text-sm font-medium">{t('availableVariables')}</Label>
+                <Button
+                  onClick={sendTestEmail}
+                  disabled={testing || !testEmail}
+                  size="sm"
+                  variant="outline"
+                >
+                  <TestTube className="h-3 w-3 mr-2" />
+                  {testing ? t('sending') : t('sendTest')}
+                </Button>
+              </div>
               <div className="space-y-1">
                 {TEMPLATE_VARIABLES(t).map((variable) => (
                   <div key={variable.var} className="text-xs">
