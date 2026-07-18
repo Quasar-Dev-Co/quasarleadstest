@@ -11,7 +11,7 @@ import { SectionHeader } from "@/components/ui/section-header";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Filter, RotateCw, Search, Sparkles, ArrowUpRight, X, RefreshCw, Star, Zap, Clock, Play, Download, Mail, Upload, ShieldCheck, BadgeAlert, BadgeCheck, XCircle, Trash2, MailOpen, Info } from "lucide-react";
+import { Filter, RotateCw, Search, Sparkles, ArrowUpRight, X, RefreshCw, Star, Zap, Clock, Play, Download, Mail, Upload, ShieldCheck, BadgeAlert, BadgeCheck, XCircle, Trash2, MailOpen, Info, Send } from "lucide-react";
 import { useTranslations } from "@/hooks/use-translations";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { auth } from "@/lib/auth";
@@ -102,6 +102,10 @@ type Lead = {
         hr_email: string;
         executive_name: string;
         executive_email: string;
+        // Fields stored from CSV import (no DB migration needed)
+        interest_keywords?: string;
+        company_linkedin?: string;
+        [key: string]: string | undefined;
     };
     // Email validation fields
     emailValidationStatus?: 'notScanned' | 'valid' | 'invalid' | 'checking';
@@ -226,6 +230,14 @@ const LeadsCollection = () => {
     const [jobQueue, setJobQueue] = useState<Job[]>([]);
     const [isExportOpen, setIsExportOpen] = useState(false);
     const [isImportOpen, setIsImportOpen] = useState(false);
+    const [isImporting, setIsImporting] = useState(false);
+    const [importProgress, setImportProgress] = useState({ current: 0, total: 0, success: 0, failed: 0, skipped: 0 });
+    // Test send email state
+    const [testSendLead, setTestSendLead] = useState<Lead | null>(null);
+    const [testSendEmail, setTestSendEmail] = useState('');
+    const [testSendPreview, setTestSendPreview] = useState<{ htmlContent: string; subject: string; leadEmail: string; leadName: string; leadCompany: string; templateStage: string } | null>(null);
+    const [testSendLoading, setTestSendLoading] = useState(false);
+    const [testSendSending, setTestSendSending] = useState(false);
     // Outreach configuration controls
     const [selectedRecipient, setSelectedRecipient] = useState<'lead' | 'company'>('lead');
     const [selectedSenderIdentity, setSelectedSenderIdentity] = useState<'company' | 'author'>('company');
@@ -804,20 +816,23 @@ const LeadsCollection = () => {
     // Resolve the display name + role for a lead.
     // Priority: authInformation.owner_name -> authInformation.executive_name
     //           -> companyOwner -> lead.name -> "not found"
+    // Role priority: authInformation.role (from CSV) -> owner/executive label -> '-'
     const getLeadDisplayName = (lead: Lead): { name: string; role: string; isNotFound: boolean } => {
+        const csvRole = lead.authInformation?.role?.trim();
+
         const ownerName = lead.authInformation?.owner_name?.trim();
-        if (ownerName) return { name: ownerName, role: 'Owner', isNotFound: false };
+        if (ownerName) return { name: ownerName, role: csvRole || 'Owner', isNotFound: false };
 
         const executiveName = lead.authInformation?.executive_name?.trim();
-        if (executiveName) return { name: executiveName, role: 'Executive', isNotFound: false };
+        if (executiveName) return { name: executiveName, role: csvRole || 'Executive', isNotFound: false };
 
         const companyOwnerName = lead.companyOwner?.trim();
-        if (companyOwnerName) return { name: companyOwnerName, role: 'Owner', isNotFound: false };
+        if (companyOwnerName) return { name: companyOwnerName, role: csvRole || 'Owner', isNotFound: false };
 
         const leadName = lead.name?.trim();
-        if (leadName) return { name: leadName, role: '-', isNotFound: false };
+        if (leadName) return { name: leadName, role: csvRole || '-', isNotFound: false };
 
-        return { name: String(t("notFound")), role: '-', isNotFound: true };
+        return { name: String(t("notFound")), role: csvRole || '-', isNotFound: true };
     };
 
     const copyEmailToClipboard = async (event: React.MouseEvent, email: string) => {
@@ -1422,6 +1437,9 @@ const LeadsCollection = () => {
             return;
         }
 
+        setIsImporting(true);
+        setImportProgress({ current: 0, total: 0, success: 0, failed: 0, skipped: 0 });
+
         // Validate file types - accept both JSON and CSV
         const validFiles = fileArr.filter(f => {
             const name = f.name.toLowerCase();
@@ -1510,6 +1528,11 @@ const LeadsCollection = () => {
             const seniority = trim(row.seniority);
             if (seniority) noteLines.push(`Seniority: ${seniority}`);
 
+            // Role is a job title (e.g. "Owner", "Founder & Director"), NOT a person's name.
+            // Put it in notes and authInformation — do NOT map it to companyOwner (which expects a name).
+            const role = trim(row.role);
+            if (role) noteLines.push(`Role: ${role}`);
+
             // found_in looks like "category | location" - split into searchService / searchLocation
             const foundIn = trim(row.found_in);
             let searchService = '';
@@ -1530,11 +1553,31 @@ const LeadsCollection = () => {
             const authInformation: any = {};
             if (interestKeywords) authInformation.interest_keywords = interestKeywords;
             if (companyLinkedin) authInformation.company_linkedin = companyLinkedin;
+            if (role) authInformation.role = role;
+
+            // Company name: use the CSV value. If empty, try to extract from the email domain.
+            // Do NOT fall back to industry/category — that's a category, not a company name.
+            let company = trim(row.company);
+            if (!company && primaryEmail) {
+                // Extract domain from email and capitalize it (e.g. "wbhandel.nl" -> "Wbhandel")
+                const domain = primaryEmail.split('@')[1] || '';
+                const baseDomain = domain.split('.')[0] || '';
+                if (baseDomain) {
+                    company = baseDomain.charAt(0).toUpperCase() + baseDomain.slice(1);
+                }
+            }
+            // Try to extract from company LinkedIn URL as a last resort
+            if (!company && companyLinkedin) {
+                const match = companyLinkedin.match(/linkedin\.com\/company\/([^/?]+)/);
+                if (match) {
+                    company = match[1].replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                }
+            }
+            if (!company) company = 'Unknown Company';
 
             return {
                 name: trim(row.name),
-                company: trim(row.company),
-                companyOwner: trim(row.role),
+                company: company,
                 location: trim(row.country) || trim(row.location),
                 email: primaryEmail,
                 phone: trim(row.phone_number) || trim(row.phone),
@@ -1656,62 +1699,108 @@ const LeadsCollection = () => {
             }
         }
 
-        // Require at least name + email for CSV imports; company can fall back to a placeholder
-        const cleanedLeads = allParsedLeads
-            .map((lead: any) => ({
-                ...lead,
-                // Ensure required fields have a value; company can default to "-" if missing on CSV
-                company: lead.company || (lead as any).industry || '-',
-            }))
-            .filter((lead: any) => lead.name && lead.email);
+        // Deduplicate within the batch by email (case-insensitive).
+        // If the same email appears multiple times, keep the first occurrence.
+        const seenEmails = new Set<string>();
+        let duplicateInBatch = 0;
+        const dedupedLeads: any[] = [];
+        for (const lead of allParsedLeads) {
+            const emailKey = String(lead.email).toLowerCase().trim();
+            if (seenEmails.has(emailKey)) {
+                duplicateInBatch += 1;
+                continue;
+            }
+            seenEmails.add(emailKey);
+            dedupedLeads.push(lead);
+        }
+
+        // Filter: require at least a name + email. Company is already set by mapCsvRow
+        // (with email-domain / LinkedIn fallback), so no industry fallback here.
+        const cleanedLeads = dedupedLeads.filter((lead: any) => lead.name && lead.email);
 
         if (cleanedLeads.length === 0) {
             const msg = skippedNoEmail > 0
-                ? `No valid leads found. ${skippedNoEmail} row(s) skipped because email is required.`
+                ? `No valid leads found. ${skippedNoEmail} row(s) skipped (no email), ${duplicateInBatch} duplicate(s) removed.`
                 : "No valid leads found. Each lead must include an email address.";
             toast.error(msg);
             return;
         }
 
-        // Upload to backend; assign to current user via header
+        // Upload to backend sequentially (gentler on DB connection pool, shows real progress)
         let successCount = 0;
         let failureCount = 0;
+        let duplicateCount = 0;
+        const totalLeads = cleanedLeads.length;
+        setImportProgress({ current: 0, total: totalLeads, success: 0, failed: 0, skipped: skippedNoEmail + duplicateInBatch });
 
-        const results = await Promise.allSettled(
-            cleanedLeads.map((lead: any) =>
-                fetch('/api/leads', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'x-user-id': userId,
-                    },
-                    body: JSON.stringify(lead),
-                }).then(async (res) => {
-                    if (!res.ok) {
-                        const data = await res.json().catch(() => ({}));
-                        throw new Error(data?.error || `HTTP ${res.status}`);
-                    }
-                    return res.json();
-                })
-            )
-        );
+        // Process in small batches to balance speed vs DB connection pressure
+        const BATCH_SIZE = 5;
+        for (let i = 0; i < cleanedLeads.length; i += BATCH_SIZE) {
+            const batch = cleanedLeads.slice(i, i + BATCH_SIZE);
+            const batchResults = await Promise.allSettled(
+                batch.map((lead: any) =>
+                    fetch('/api/leads', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'x-user-id': userId,
+                        },
+                        body: JSON.stringify(lead),
+                    }).then(async (res) => {
+                        if (!res.ok) {
+                            const data = await res.json().catch(() => ({}));
+                            const errMsg = String(data?.error || `HTTP ${res.status}`);
+                            // Mark DB duplicates separately from real failures
+                            const isDup = res.status === 400 && /already exists/i.test(errMsg);
+                            const err = new Error(errMsg);
+                            (err as any).isDuplicate = isDup;
+                            throw err;
+                        }
+                        return res.json();
+                    })
+                )
+            );
 
-        results.forEach((r) => {
-            if (r.status === 'fulfilled' && r.value?.success) {
-                successCount += 1;
-            } else {
-                failureCount += 1;
-            }
-        });
+            batchResults.forEach((r) => {
+                if (r.status === 'fulfilled' && r.value?.success) {
+                    successCount += 1;
+                } else if (r.status === 'rejected' && (r.reason as any)?.isDuplicate) {
+                    duplicateCount += 1;
+                } else {
+                    failureCount += 1;
+                }
+            });
 
+            // Update progress after each batch
+            const processed = Math.min(i + BATCH_SIZE, cleanedLeads.length);
+            setImportProgress({
+                current: processed,
+                total: totalLeads,
+                success: successCount,
+                failed: failureCount,
+                skipped: skippedNoEmail + duplicateInBatch + duplicateCount
+            });
+            // Yield to the UI thread so the loader can repaint
+            await new Promise(resolve => setTimeout(resolve, 0));
+        }
+
+        // Final summary toasts
         if (successCount > 0) {
-            toast.success(`Imported ${successCount} lead${successCount !== 1 ? 's' : ''}${skippedNoEmail > 0 ? ` (${skippedNoEmail} skipped — no email)` : ''}`);
+            const parts = [`Imported ${successCount} lead${successCount !== 1 ? 's' : ''}`];
+            if (skippedNoEmail > 0) parts.push(`${skippedNoEmail} skipped (no email)`);
+            if (duplicateInBatch > 0) parts.push(`${duplicateInBatch} duplicate(s) in file`);
+            if (duplicateCount > 0) parts.push(`${duplicateCount} already in database`);
+            toast.success(parts.join(' · '));
         }
         if (failureCount > 0) {
-            toast.error(`${failureCount} lead${failureCount !== 1 ? 's' : ''} failed (duplicates or validation)`);
+            toast.error(`${failureCount} lead${failureCount !== 1 ? 's' : ''} failed (validation errors)`);
         }
-        if (successCount === 0 && failureCount === 0 && skippedNoEmail > 0) {
-            toast.error(`All ${skippedNoEmail} row(s) were skipped because email is required.`);
+        if (successCount === 0 && failureCount === 0 && (skippedNoEmail + duplicateInBatch + duplicateCount) > 0) {
+            const reasons = [];
+            if (skippedNoEmail > 0) reasons.push(`${skippedNoEmail} without email`);
+            if (duplicateInBatch > 0) reasons.push(`${duplicateInBatch} duplicate(s) in file`);
+            if (duplicateCount > 0) reasons.push(`${duplicateCount} already in database`);
+            toast.error(`No new leads imported. ${reasons.join(', ')}.`);
         }
 
             // Refresh data to reflect new leads
@@ -1721,6 +1810,80 @@ const LeadsCollection = () => {
         } catch (error) {
             console.error('Error importing leads:', error);
             toast.error("Failed to import leads. Please check the file format.");
+        } finally {
+            setIsImporting(false);
+            setImportProgress({ current: 0, total: 0, success: 0, failed: 0, skipped: 0 });
+        }
+    };
+
+    // Test send email functions
+    const openTestSendDialog = async (lead: Lead) => {
+        setTestSendLead(lead);
+        setTestSendEmail(lead.email || '');
+        setTestSendPreview(null);
+        setTestSendLoading(true);
+        try {
+            const userId = await auth.getCurrentUserId();
+            if (!userId) {
+                toast.error("You must be signed in to send test emails");
+                setTestSendLoading(false);
+                return;
+            }
+            const res = await fetch(`/api/leads/test-send?leadId=${lead._id}&userId=${userId}`, {
+                headers: { 'x-user-id': userId },
+            });
+            const data = await res.json();
+            if (data.success && data.preview) {
+                setTestSendPreview(data.preview);
+            } else {
+                toast.error(data.error || "Failed to generate email preview");
+            }
+        } catch (err) {
+            console.error("Test send preview error:", err);
+            toast.error("Failed to generate email preview");
+        } finally {
+            setTestSendLoading(false);
+        }
+    };
+
+    const sendTestEmail = async () => {
+        if (!testSendLead || !testSendEmail) return;
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(testSendEmail)) {
+            toast.error("Please enter a valid email address");
+            return;
+        }
+        setTestSendSending(true);
+        try {
+            const userId = await auth.getCurrentUserId();
+            if (!userId) {
+                toast.error("You must be signed in to send test emails");
+                return;
+            }
+            const res = await fetch('/api/leads/test-send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
+                body: JSON.stringify({
+                    leadId: testSendLead._id,
+                    testEmail: testSendEmail,
+                    userId,
+                    sendEmail: true,
+                }),
+            });
+            const data = await res.json();
+            if (data.success && data.sent) {
+                toast.success(`Test email sent to ${testSendEmail}`);
+            } else if (data.success && data.preview) {
+                // Preview generated but send failed
+                setTestSendPreview(data.preview);
+                toast.error(data.sendError || "Failed to send email. Check SMTP settings.");
+            } else {
+                toast.error(data.error || "Failed to send test email");
+            }
+        } catch (err) {
+            console.error("Test send error:", err);
+            toast.error("Failed to send test email");
+        } finally {
+            setTestSendSending(false);
         }
     };
 
@@ -2183,14 +2346,15 @@ const LeadsCollection = () => {
                         <Download className="h-4 w-4" />
                         <span>{String(t("export"))}</span>
                     </Button>
-                    <Button 
-                        variant="outline" 
+                    <Button
+                        variant="outline"
                         className="flex items-center gap-1"
                         onClick={() => setIsImportOpen(true)}
+                        disabled={isImporting}
                         title={String(t("importLeadsDescription"))}
                     >
-                        <Upload className="h-4 w-4" />
-                        <span>{String(t("import"))}</span>
+                        {isImporting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                        <span>{isImporting ? String(t("importing")) : String(t("import"))}</span>
                     </Button>
                     <Button 
                         variant="outline" 
@@ -2577,7 +2741,7 @@ const LeadsCollection = () => {
                                         <TableHead className="min-w-[80px]">{String(t("rating"))}</TableHead>
                                         <TableHead className="min-w-[200px]">{String(t("emailAutomation"))}</TableHead>
                                         <TableHead className="min-w-[120px]">{String(t("authInfo"))}</TableHead>
-                                        <TableHead className="min-w-[100px]">{String(t("status"))}</TableHead>
+                                        <TableHead className="min-w-[140px]">{String(t("status"))}</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -2608,7 +2772,7 @@ const LeadsCollection = () => {
                                                     {(() => {
                                                         const info = getLeadDisplayName(lead);
                                                         return (
-                                                            <span className={`text-xs ${info.role === '-' ? 'text-muted-foreground' : 'text-muted-foreground'}`}>
+                                                            <span className={`text-xs truncate block max-w-[100px] ${info.role === '-' ? 'text-muted-foreground' : 'text-gray-700 font-medium'}`} title={info.role}>
                                                                 {info.role}
                                                             </span>
                                                         );
@@ -2667,6 +2831,15 @@ const LeadsCollection = () => {
                                                             variant="ghost"
                                                             size="icon"
                                                             className="h-6 w-6"
+                                                            onClick={(e) => { e.stopPropagation(); openTestSendDialog(lead); }}
+                                                            title="Send test email"
+                                                        >
+                                                            <Send className="h-3.5 w-3.5 text-green-500" />
+                                                        </Button>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-6 w-6"
                                                             onClick={() => setDetailsLead(lead)}
                                                             title="View full lead details"
                                                         >
@@ -2717,7 +2890,7 @@ const LeadsCollection = () => {
                                         <TableHead className="min-w-[180px]">{String(t("email"))}</TableHead>
                                         <TableHead className="min-w-[80px]">{String(t("rating"))}</TableHead>
                                         <TableHead className="min-w-[200px]">{String(t("emailAutomation"))}</TableHead>
-                                        <TableHead className="min-w-[100px]">{String(t("status"))}</TableHead>
+                                        <TableHead className="min-w-[140px]">{String(t("status"))}</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -2748,7 +2921,7 @@ const LeadsCollection = () => {
                                                     {(() => {
                                                         const info = getLeadDisplayName(lead);
                                                         return (
-                                                            <span className="text-xs text-muted-foreground">
+                                                            <span className={`text-xs truncate block max-w-[100px] ${info.role === '-' ? 'text-muted-foreground' : 'text-gray-700 font-medium'}`} title={info.role}>
                                                                 {info.role}
                                                             </span>
                                                         );
@@ -2801,6 +2974,15 @@ const LeadsCollection = () => {
                                                 <TableCell>
                                                     <div className="flex items-center gap-1">
                                                         <StatusBadge status={lead.status} />
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-6 w-6"
+                                                            onClick={(e) => { e.stopPropagation(); openTestSendDialog(lead); }}
+                                                            title="Send test email"
+                                                        >
+                                                            <Send className="h-3.5 w-3.5 text-green-500" />
+                                                        </Button>
                                                         <Button
                                                             variant="ghost"
                                                             size="icon"
@@ -2850,7 +3032,7 @@ const LeadsCollection = () => {
                                         <TableHead className="min-w-[180px]">{String(t("email"))}</TableHead>
                                         <TableHead className="min-w-[80px]">{String(t("rating"))}</TableHead>
                                         <TableHead className="min-w-[200px]">{String(t("emailAutomation"))}</TableHead>
-                                        <TableHead className="min-w-[100px]">{String(t("status"))}</TableHead>
+                                        <TableHead className="min-w-[140px]">{String(t("status"))}</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -2881,7 +3063,7 @@ const LeadsCollection = () => {
                                                     {(() => {
                                                         const info = getLeadDisplayName(lead);
                                                         return (
-                                                            <span className="text-xs text-muted-foreground">
+                                                            <span className={`text-xs truncate block max-w-[100px] ${info.role === '-' ? 'text-muted-foreground' : 'text-gray-700 font-medium'}`} title={info.role}>
                                                                 {info.role}
                                                             </span>
                                                         );
@@ -2938,6 +3120,15 @@ const LeadsCollection = () => {
                                                             variant="ghost"
                                                             size="icon"
                                                             className="h-6 w-6"
+                                                            onClick={(e) => { e.stopPropagation(); openTestSendDialog(lead); }}
+                                                            title="Send test email"
+                                                        >
+                                                            <Send className="h-3.5 w-3.5 text-green-500" />
+                                                        </Button>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-6 w-6"
                                                             onClick={() => setDetailsLead(lead)}
                                                             title="View full lead details"
                                                         >
@@ -2983,7 +3174,7 @@ const LeadsCollection = () => {
                                         <TableHead className="min-w-[180px]">{String(t("email"))}</TableHead>
                                         <TableHead className="min-w-[80px]">{String(t("rating"))}</TableHead>
                                         <TableHead className="min-w-[150px]">{String(t("lastContacted"))}</TableHead>
-                                        <TableHead className="min-w-[100px]">{String(t("status"))}</TableHead>
+                                        <TableHead className="min-w-[140px]">{String(t("status"))}</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -3014,7 +3205,7 @@ const LeadsCollection = () => {
                                                     {(() => {
                                                         const info = getLeadDisplayName(lead);
                                                         return (
-                                                            <span className="text-xs text-muted-foreground">
+                                                            <span className={`text-xs truncate block max-w-[100px] ${info.role === '-' ? 'text-muted-foreground' : 'text-gray-700 font-medium'}`} title={info.role}>
                                                                 {info.role}
                                                             </span>
                                                         );
@@ -3062,6 +3253,15 @@ const LeadsCollection = () => {
                                                 <TableCell>
                                                     <div className="flex items-center gap-1">
                                                         <StatusBadge status={lead.status} />
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-6 w-6"
+                                                            onClick={(e) => { e.stopPropagation(); openTestSendDialog(lead); }}
+                                                            title="Send test email"
+                                                        >
+                                                            <Send className="h-3.5 w-3.5 text-green-500" />
+                                                        </Button>
                                                         <Button
                                                             variant="ghost"
                                                             size="icon"
@@ -3128,7 +3328,7 @@ const LeadsCollection = () => {
                                     <TableHead className="min-w-[80px]">{String(t("rating"))}</TableHead>
                                     <TableHead className="min-w-[200px]">{String(t("emailAutomation"))}</TableHead>
                                     <TableHead className="min-w-[120px]">{String(t("authInfo"))}</TableHead>
-                                    <TableHead className="min-w-[100px]">{String(t("status"))}</TableHead>
+                                    <TableHead className="min-w-[140px]">{String(t("status"))}</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -3159,7 +3359,7 @@ const LeadsCollection = () => {
                                                 {(() => {
                                                     const info = getLeadDisplayName(lead);
                                                     return (
-                                                        <span className="text-xs text-muted-foreground">
+                                                        <span className={`text-xs truncate block max-w-[100px] ${info.role === '-' ? 'text-muted-foreground' : 'text-gray-700 font-medium'}`} title={info.role}>
                                                             {info.role}
                                                         </span>
                                                     );
@@ -3210,6 +3410,15 @@ const LeadsCollection = () => {
                                             <TableCell>
                                                 <div className="flex items-center gap-1">
                                                     <StatusBadge status={lead.status} />
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-6 w-6"
+                                                        onClick={(e) => { e.stopPropagation(); openTestSendDialog(lead); }}
+                                                        title="Send test email"
+                                                    >
+                                                        <Send className="h-3.5 w-3.5 text-green-500" />
+                                                    </Button>
                                                     <Button
                                                         variant="ghost"
                                                         size="icon"
@@ -3283,7 +3492,7 @@ const LeadsCollection = () => {
             </Dialog>
 
             {/* Import Modal */}
-            <Dialog open={isImportOpen} onOpenChange={setIsImportOpen}>
+            <Dialog open={isImportOpen} onOpenChange={(open) => { if (!isImporting) setIsImportOpen(open); }}>
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader>
                         <DialogTitle>{String(t("importLeadsTitle"))}</DialogTitle>
@@ -3292,6 +3501,46 @@ const LeadsCollection = () => {
                         </DialogDescription>
                     </DialogHeader>
                     <div className="grid grid-cols-1 gap-3">
+                        {isImporting ? (
+                            /* Loader + progress shown while importing */
+                            <div className="rounded-lg p-8 text-center space-y-4">
+                                <RefreshCw className="h-10 w-10 mx-auto text-blue-500 animate-spin" />
+                                <div className="space-y-1">
+                                    <p className="text-sm font-medium text-gray-700">
+                                        {String(t("importingLeads"))}
+                                    </p>
+                                    <p className="text-xs text-gray-500">
+                                        {importProgress.current} / {importProgress.total}
+                                        {importProgress.total > 0 ? ` (${Math.round((importProgress.current / importProgress.total) * 100)}%)` : ''}
+                                    </p>
+                                </div>
+                                {importProgress.total > 0 && (
+                                    <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                                        <div
+                                            className="bg-blue-500 h-2 rounded-full transition-all duration-200"
+                                            style={{ width: `${(importProgress.current / importProgress.total) * 100}%` }}
+                                        />
+                                    </div>
+                                )}
+                                <div className="grid grid-cols-3 gap-2 text-xs pt-1">
+                                    <div className="text-center">
+                                        <div className="font-semibold text-green-600">{importProgress.success}</div>
+                                        <div className="text-gray-500">{String(t("imported"))}</div>
+                                    </div>
+                                    <div className="text-center">
+                                        <div className="font-semibold text-red-600">{importProgress.failed}</div>
+                                        <div className="text-gray-500">{String(t("failed"))}</div>
+                                    </div>
+                                    <div className="text-center">
+                                        <div className="font-semibold text-gray-600">{importProgress.skipped}</div>
+                                        <div className="text-gray-500">{String(t("skipped"))}</div>
+                                    </div>
+                                </div>
+                                <p className="text-xs text-gray-400">
+                                    {String(t("doNotCloseWindow"))}
+                                </p>
+                            </div>
+                        ) : (
                         <div
                             className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors"
                             onDragOver={(e) => {
@@ -3344,9 +3593,118 @@ const LeadsCollection = () => {
                                 {String(t("chooseFile"))}
                             </Button>
                         </div>
+                        )}
                     </div>
+                    {!isImporting && (
+                        <DialogClose asChild>
+                            <Button variant="outline" className="mt-4">{String(t("cancel"))}</Button>
+                        </DialogClose>
+                    )}
+                </DialogContent>
+            </Dialog>
+
+            {/* Test Send Email Dialog */}
+            <Dialog open={!!testSendLead} onOpenChange={(open) => { if (!testSendSending) { setTestSendLead(null); setTestSendPreview(null); } }}>
+                <DialogContent className="sm:max-w-2xl">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <Send className="h-5 w-5 text-green-500" />
+                            Test Send Email
+                        </DialogTitle>
+                        <DialogDescription>
+                            Preview and send a test email using this lead's actual data.
+                        </DialogDescription>
+                    </DialogHeader>
+                    {testSendLead && (
+                        <div className="space-y-4">
+                            {/* Lead info summary */}
+                            <div className="bg-gray-50 rounded-lg p-3 text-sm space-y-1">
+                                <div className="flex justify-between">
+                                    <span className="text-muted-foreground">Lead:</span>
+                                    <span className="font-medium">{testSendLead.name}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-muted-foreground">Company:</span>
+                                    <span className="font-medium">{testSendLead.company}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-muted-foreground">Lead's email:</span>
+                                    <span className="font-medium text-blue-600">{testSendLead.email}</span>
+                                </div>
+                                {testSendLead.authInformation?.role && (
+                                    <div className="flex justify-between">
+                                        <span className="text-muted-foreground">Role:</span>
+                                        <span className="font-medium">{testSendLead.authInformation.role}</span>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Send to email input */}
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium">Send test email to:</label>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="email"
+                                        value={testSendEmail}
+                                        onChange={(e) => setTestSendEmail(e.target.value)}
+                                        placeholder="Enter email address to send test to"
+                                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        disabled={testSendSending}
+                                    />
+                                    <Button
+                                        onClick={sendTestEmail}
+                                        disabled={testSendSending || !testSendEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(testSendEmail)}
+                                        className="bg-green-600 hover:bg-green-700 text-white"
+                                    >
+                                        {testSendSending ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                                        <span className="ml-1">{testSendSending ? "Sending..." : "Send Test"}</span>
+                                    </Button>
+                                </div>
+                                <p className="text-xs text-gray-500">
+                                    The email will be sent with subject prefixed with [TEST]. The lead's actual email is shown above.
+                                </p>
+                            </div>
+
+                            {/* Email preview */}
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-sm font-medium">Email Preview (what the lead will see):</label>
+                                    {testSendPreview && (
+                                        <span className="text-xs text-gray-500">Stage: {testSendPreview.templateStage}</span>
+                                    )}
+                                </div>
+                                {testSendLoading ? (
+                                    <div className="flex items-center justify-center py-12 border rounded-lg bg-gray-50">
+                                        <RefreshCw className="h-6 w-6 animate-spin text-blue-500" />
+                                        <span className="ml-2 text-sm text-gray-500">Generating email preview...</span>
+                                    </div>
+                                ) : testSendPreview ? (
+                                    <div className="border rounded-lg overflow-hidden">
+                                        <div className="bg-gray-100 px-3 py-2 text-xs text-gray-600 border-b">
+                                            <div><strong>Subject:</strong> [TEST] {testSendPreview.subject}</div>
+                                            <div><strong>To:</strong> {testSendEmail || testSendPreview.leadEmail}</div>
+                                        </div>
+                                        <div className="max-h-[400px] overflow-y-auto bg-white">
+                                            <iframe
+                                                srcDoc={testSendPreview.htmlContent}
+                                                className="w-full border-0"
+                                                style={{ minHeight: '300px', height: 'auto' }}
+                                                title="Email Preview"
+                                            />
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-8 border rounded-lg bg-gray-50 text-sm text-gray-500">
+                                        Click "Send Test" to generate and send the email preview.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
                     <DialogClose asChild>
-                        <Button variant="outline" className="mt-4">{String(t("cancel"))}</Button>
+                        <Button variant="outline" className="mt-2" disabled={testSendSending} onClick={() => { setTestSendLead(null); setTestSendPreview(null); }}>
+                            {String(t("close"))}
+                        </Button>
                     </DialogClose>
                 </DialogContent>
             </Dialog>
@@ -3383,6 +3741,16 @@ const LeadsCollection = () => {
                                 <div className="col-span-2 break-words">{authInfoLead.authInformation?.executive_name || ''}</div>
                                 <div className="text-muted-foreground">Executive Email</div>
                                 <div className="col-span-2 break-words">{authInfoLead.authInformation?.executive_email || ''}</div>
+                                <div className="text-muted-foreground">Company LinkedIn</div>
+                                <div className="col-span-2 break-words">
+                                    {authInfoLead.authInformation?.company_linkedin
+                                        ? <a href={authInfoLead.authInformation.company_linkedin} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{authInfoLead.authInformation.company_linkedin}</a>
+                                        : ''}
+                                </div>
+                                <div className="text-muted-foreground">Role / Title</div>
+                                <div className="col-span-2 break-words">{authInfoLead.authInformation?.role || ''}</div>
+                                <div className="text-muted-foreground">Interest Keywords</div>
+                                <div className="col-span-2 break-words whitespace-pre-wrap text-xs">{authInfoLead.authInformation?.interest_keywords || ''}</div>
                             </div>
                         </div>
                     )}

@@ -136,6 +136,11 @@ function getCompanyLinkedin(lead: any): string {
   return authInfo.company_linkedin || '';
 }
 
+function getLeadRole(lead: any): string {
+  const authInfo = (lead.authInformation as any) || {};
+  return authInfo.role || '';
+}
+
 function replaceEmailVariables(content: string, lead: any, companySettings: any = null): string {
   const senderIdentity = lead?.senderIdentity || companySettings?.defaultSenderIdentity || 'company';
   const chosenSenderName = senderIdentity === 'author'
@@ -199,6 +204,7 @@ ${prompt}
 Lead context:
 - Lead name: ${lead?.name || ''}
 - Company: ${lead?.company || ''}
+- Role/Title: ${getLeadRole(lead) || 'N/A'}
 - Location: ${lead?.location || ''}
 - Website: ${lead?.website || ''}
 - Stage: ${stageLabel}
