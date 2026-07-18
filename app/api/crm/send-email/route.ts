@@ -24,6 +24,7 @@ export async function POST(request: NextRequest) {
       ? (lead.authInformation as any).company_email
       : lead.email;
 
+    const authInfo = (lead.authInformation as any) || {};
     const emailResult = await emailService.sendStageEmail({
       name: lead.name,
       email: targetEmail,
@@ -31,7 +32,10 @@ export async function POST(request: NextRequest) {
       stage: stage,
       leadId: leadId,
       searchService: (lead as any).searchService || '',
-      searchLocation: (lead as any).searchLocation || ''
+      searchLocation: (lead as any).searchLocation || '',
+      interestKeywords: authInfo.interest_keywords || '',
+      linkedinProfile: (lead as any).linkedinProfile || '',
+      companyLinkedin: authInfo.company_linkedin || ''
     }, userId);
 
     if (emailResult.success) {

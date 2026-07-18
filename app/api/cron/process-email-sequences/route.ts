@@ -38,6 +38,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
         if (!nextEmail) continue;
 
+        const authInfo = (lead.authInformation as any) || {};
         const emailResult = await emailService.sendStageEmail({
           name: lead.name,
           email: lead.email,
@@ -45,7 +46,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           stage: nextEmail.stage,
           leadId: lead.id,
           searchService: (lead as any).searchService || '',
-          searchLocation: (lead as any).searchLocation || ''
+          searchLocation: (lead as any).searchLocation || '',
+          interestKeywords: authInfo.interest_keywords || '',
+          linkedinProfile: (lead as any).linkedinProfile || '',
+          companyLinkedin: authInfo.company_linkedin || ''
         }, job.userId || '');
 
         if (emailResult.success) {

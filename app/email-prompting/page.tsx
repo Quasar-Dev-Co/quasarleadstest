@@ -86,6 +86,9 @@ const TEMPLATE_VARIABLES = (t: (key: string) => string) => [
   { var: "{{OWNER_NAME}}", description: "Lead's company owner name" },
   { var: "{{COMPANY_NAME}}", description: t('companyNameVar') },
   { var: "{{COMPANY_REVIEW}}", description: "Lead's company reviews and ratings" },
+  { var: "{{INTEREST_KEYWORDS}}", description: "Lead's interest keywords (from CSV import)" },
+  { var: "{{LEAD_LINKEDIN}}", description: "Lead's personal LinkedIn profile URL" },
+  { var: "{{COMPANY_LINKEDIN}}", description: "Lead's company LinkedIn page URL" },
   { var: "{{SENDER_NAME}}", description: t('senderNameDesc') },
   { var: "{{SENDER_EMAIL}}", description: t('senderEmailDesc') },
   { var: "{{COMPANY_SERVICE}}", description: t('companyService') },
@@ -151,6 +154,9 @@ export default function EmailPrompting() {
   const [customVariables, setCustomVariables] = useState<Record<string, string>>({
     "{{OWNER_NAME}}": "John Smith",
     "{{COMPANY_REVIEW}}": "4.5 stars with 127 positive reviews",
+    "{{INTEREST_KEYWORDS}}": "sustainable mobility, EV, elektrificatie, duurzaamheid",
+    "{{LEAD_LINKEDIN}}": "https://www.linkedin.com/in/example-lead",
+    "{{COMPANY_LINKEDIN}}": "https://www.linkedin.com/company/example-company",
     "{{SENDER_NAME}}": "QuasarLeads Team",
     "{{SENDER_EMAIL}}": "",
     "{{COMPANY_SERVICE}}": "AI-powered lead generation",
@@ -608,8 +614,9 @@ IMPORTANT: Generate these components separately:
    - Tone and style (professional, friendly, urgent, etc.)
    - Call-to-action appropriate for this follow-up stage
    - Instructions to reference {{COMPANY_REVIEW}} if available to show research
+   - Instructions to reference {{INTEREST_KEYWORDS}} if available to personalize based on the lead's interests
    - Any urgency or scarcity elements if appropriate for later stages
-   Example: "Write a ${stageInfo.label} email. Start by acknowledging previous contact. Highlight our ${companySettings.service} and how it helps businesses in {{TARGET_INDUSTRY}}. If company reviews are available, mention them. Include a clear call-to-action to schedule a call. Keep it ${stageInfo.value.includes('three') || stageInfo.value.includes('four') ? 'direct and value-focused' : stageInfo.value.includes('six') || stageInfo.value.includes('seven') ? 'final and helpful' : 'professional and friendly'}."
+   Example: "Write a ${stageInfo.label} email. Start by acknowledging previous contact. Highlight our ${companySettings.service} and how it helps businesses in {{TARGET_INDUSTRY}}. If company reviews are available, mention them. If interest keywords are available, reference one or two to personalize. Include a clear call-to-action to schedule a call. Keep it ${stageInfo.value.includes('three') || stageInfo.value.includes('four') ? 'direct and value-focused' : stageInfo.value.includes('six') || stageInfo.value.includes('seven') ? 'final and helpful' : 'professional and friendly'}."
 
 3. EMAIL SIGNATURE: Professional signature with HTML formatting and placeholders:
    <p style="margin: 0;">Best regards,<br>
@@ -795,6 +802,9 @@ Return as JSON:
       "{{OWNER_NAME}}": customVariables["{{OWNER_NAME}}"] || "John Smith",
       "{{COMPANY_NAME}}": testLead.company,
       "{{COMPANY_REVIEW}}": customVariables["{{COMPANY_REVIEW}}"] || "4.5 stars with 127 positive reviews",
+      "{{INTEREST_KEYWORDS}}": customVariables["{{INTEREST_KEYWORDS}}"] || "",
+      "{{LEAD_LINKEDIN}}": customVariables["{{LEAD_LINKEDIN}}"] || "",
+      "{{COMPANY_LINKEDIN}}": customVariables["{{COMPANY_LINKEDIN}}"] || "",
       "{{SENDER_NAME}}": customVariables["{{SENDER_NAME}}"] || companySettings.senderName,
       "{{SENDER_EMAIL}}": customVariables["{{SENDER_EMAIL}}"] || companySettings.senderEmail,
       "{{COMPANY_SERVICE}}": customVariables["{{COMPANY_SERVICE}}"] || companySettings.service,

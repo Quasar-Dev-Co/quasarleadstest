@@ -1408,128 +1408,311 @@ const LeadsCollection = () => {
     };
 
     // Import function
-    const importLeads = async (file: File) => {
-        try {
-            const isJsonByType = file.type === 'application/json' || file.type === '';
-            const isJsonByName = file.name.toLowerCase().endsWith('.json');
-            if (!(isJsonByType && isJsonByName)) {
-                toast.error("Only JSON files are accepted for import");
-                return;
-            }
+    const importLeads = async (files: File | File[]) => {
+      try {
+        const fileArr = Array.isArray(files) ? files : [files];
+        if (fileArr.length === 0) {
+            toast.error("No files selected");
+            return;
+        }
 
-            const userId = await auth.getCurrentUserId();
-            if (!userId) {
-                toast.error("You must be signed in to import leads");
-                return;
-            }
+        const userId = await auth.getCurrentUserId();
+        if (!userId) {
+            toast.error("You must be signed in to import leads");
+            return;
+        }
 
-            const text = await file.text();
-            const parsed = JSON.parse(text);
-            const importedLeads = Array.isArray(parsed)
-                ? parsed
-                : (Array.isArray((parsed as any)?.leads) ? (parsed as any).leads : [parsed]);
+        // Validate file types - accept both JSON and CSV
+        const validFiles = fileArr.filter(f => {
+            const name = f.name.toLowerCase();
+            return name.endsWith('.json') || name.endsWith('.csv');
+        });
 
-            // Map to supported fields and validate
-            const cleanedLeads = importedLeads
-                .map((lead: any) => ({
-                    name: String(lead?.name || '').trim(),
-                    company: String(lead?.company || '').trim(),
-                    email: String(lead?.email || '').trim(),
-                    companyOwner: lead?.companyOwner || '',
-                    location: lead.location || '',
-                    website: lead.website || '',
-                    phone: lead.phone || '',
-                    linkedinProfile: lead.linkedinProfile || '',
-                    status: lead.status || 'active',
-                    stage: lead.stage || 'new_leads',
-                    notes: lead.notes || '',
-                    tags: Array.isArray(lead.tags) ? lead.tags : [],
-                    source: lead.source || 'import',
-                    industry: lead.industry || '',
-                    googleAds: !!lead.googleAds,
-                    googleAdsChecked: !!lead.googleAdsChecked,
-                    organicRanking: lead.organicRanking ?? null,
-                    isHighValue: !!lead.isHighValue,
-                    dealValue: lead.dealValue ?? null,
-                    probability: lead.probability ?? null,
-                    budget: lead.budget ?? null,
-                    closedDate: lead.closedDate || null,
-                    closedReason: lead.closedReason || '',
-                    lossReason: lead.lossReason || '',
-                    lossDescription: lead.lossDescription || '',
-                    address: lead.address || '',
-                    latitude: lead.latitude ?? null,
-                    longitude: lead.longitude ?? null,
-                    rating: lead.rating ?? null,
-                    reviews: lead.reviews ?? null,
-                    authInformation: lead.authInformation ?? null,
-                    lastContactedAt: lead.lastContactedAt || null,
-                    lastEmailedAt: lead.lastEmailedAt || null,
-                    emailAutomationEnabled: typeof lead.emailAutomationEnabled === 'boolean' ? lead.emailAutomationEnabled : true,
-                    emailSequenceStartDate: lead.emailSequenceStartDate || null,
-                    emailSequenceActive: !!lead.emailSequenceActive,
-                    nextScheduledEmail: lead.nextScheduledEmail || null,
-                    emailSequenceStep: lead.emailSequenceStep ?? null,
-                    emailStoppedReason: lead.emailStoppedReason || '',
-                    emailRetryCount: lead.emailRetryCount ?? null,
-                    emailFailureCount: lead.emailFailureCount ?? null,
-                    emailLastAttempt: lead.emailLastAttempt || null,
-                    emailStatus: lead.emailStatus || '',
-                    emailErrors: lead.emailErrors ?? null,
-                    emailValidationStatus: lead.emailValidationStatus || 'notScanned',
-                    emailValidationCheckedAt: lead.emailValidationCheckedAt || null,
-                    emailValidationDetails: lead.emailValidationDetails ?? null,
-                    outreachRecipient: lead.outreachRecipient || 'lead',
-                    senderIdentity: lead.senderIdentity || 'company',
-                    emailHistory: lead.emailHistory ?? null,
-                    nextFollowUpDate: lead.nextFollowUpDate || null,
-                    followUpCount: lead.followUpCount ?? null,
-                    createdAt: lead.createdAt || null,
-                }))
-                .filter((lead: any) => lead.name && lead.company && lead.email);
+        if (validFiles.length === 0) {
+            toast.error("Only JSON and CSV files are accepted for import");
+            return;
+        }
 
-            if (cleanedLeads.length === 0) {
-                toast.error("No valid leads found. Each lead must include name, company, and email");
-                return;
-            }
+        // Parse a single CSV file into an array of lead objects.
+        // Handles quoted fields with commas and embedded quotes.
+        const parseCsv = (text: string): any[] => {
+            // Strip BOM if present
+            const clean = text.replace(/^\uFEFF/, '');
+            const rows: string[][] = [];
+            let cur: string[] = [];
+            let field = '';
+            let inQuotes = false;
 
-            // Upload to backend; assign to current user via header
-            let successCount = 0;
-            let failureCount = 0;
-
-            const results = await Promise.allSettled(
-                cleanedLeads.map((lead: any) =>
-                    fetch('/api/leads', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'x-user-id': userId,
-                        },
-                        body: JSON.stringify(lead),
-                    }).then(async (res) => {
-                        if (!res.ok) {
-                            const data = await res.json().catch(() => ({}));
-                            throw new Error(data?.error || `HTTP ${res.status}`);
+            for (let i = 0; i < clean.length; i++) {
+                const ch = clean[i];
+                if (inQuotes) {
+                    if (ch === '"') {
+                        if (clean[i + 1] === '"') {
+                            field += '"';
+                            i++;
+                        } else {
+                            inQuotes = false;
                         }
-                        return res.json();
-                    })
-                )
-            );
-
-            results.forEach((r) => {
-                if (r.status === 'fulfilled' && r.value?.success) {
-                    successCount += 1;
+                    } else {
+                        field += ch;
+                    }
                 } else {
-                    failureCount += 1;
+                    if (ch === '"') {
+                        inQuotes = true;
+                    } else if (ch === ',') {
+                        cur.push(field);
+                        field = '';
+                    } else if (ch === '\r') {
+                        // ignore - handle \r\n or \r
+                        continue;
+                    } else if (ch === '\n') {
+                        cur.push(field);
+                        rows.push(cur);
+                        cur = [];
+                        field = '';
+                    } else {
+                        field += ch;
+                    }
                 }
-            });
+            }
+            // push trailing field/row if any
+            if (field.length > 0 || cur.length > 0) {
+                cur.push(field);
+                rows.push(cur);
+            }
 
-            if (successCount > 0) {
-                toast.success(`Imported ${successCount} lead${successCount !== 1 ? 's' : ''}`);
+            if (rows.length === 0) return [];
+            const headers = rows[0].map(h => h.trim());
+            const out: any[] = [];
+            for (let r = 1; r < rows.length; r++) {
+                const row = rows[r];
+                if (!row || row.every(c => c.trim() === '')) continue;
+                const obj: any = {};
+                for (let c = 0; c < headers.length; c++) {
+                    obj[headers[c]] = (row[c] ?? '').trim();
+                }
+                out.push(obj);
             }
-            if (failureCount > 0) {
-                toast.error(`${failureCount} lead${failureCount !== 1 ? 's' : ''} failed (duplicates or validation)`);
+            return out;
+        };
+
+        // Map a CSV row (with merged CSV headers) to the lead shape expected by the API.
+        const mapCsvRow = (row: any) => {
+            const trim = (v: any) => String(v ?? '').trim();
+
+            // Build notes from extra columns that don't have dedicated fields
+            const noteLines: string[] = [];
+            const personalEmail = trim(row.personal_email);
+            const primaryEmail = trim(row.email);
+            if (personalEmail && personalEmail !== primaryEmail) {
+                noteLines.push(`Personal email: ${personalEmail}`);
             }
+            const seniority = trim(row.seniority);
+            if (seniority) noteLines.push(`Seniority: ${seniority}`);
+
+            // found_in looks like "category | location" - split into searchService / searchLocation
+            const foundIn = trim(row.found_in);
+            let searchService = '';
+            let searchLocation = '';
+            if (foundIn) {
+                const parts = foundIn.split('|').map(s => s.trim()).filter(Boolean);
+                if (parts.length >= 2) {
+                    searchService = parts[0];
+                    searchLocation = parts[parts.length - 1];
+                } else if (parts.length === 1) {
+                    searchService = parts[0];
+                }
+            }
+
+            // Store the new fields inside authInformation JSON so no DB migration is required
+            const interestKeywords = trim(row.interest_keywords) || trim(row.interestKeywords);
+            const companyLinkedin = trim(row.company_linkedin) || trim(row.companyLinkedin);
+            const authInformation: any = {};
+            if (interestKeywords) authInformation.interest_keywords = interestKeywords;
+            if (companyLinkedin) authInformation.company_linkedin = companyLinkedin;
+
+            return {
+                name: trim(row.name),
+                company: trim(row.company),
+                companyOwner: trim(row.role),
+                location: trim(row.country) || trim(row.location),
+                email: primaryEmail,
+                phone: trim(row.phone_number) || trim(row.phone),
+                linkedinProfile: trim(row.linkedin) || trim(row.linkedinProfile),
+                authInformation: Object.keys(authInformation).length > 0 ? authInformation : null,
+                address: trim(row.company_address) || trim(row.address),
+                industry: trim(row.category) || trim(row.industry),
+                searchService: searchService || trim(row.searchService),
+                searchLocation: searchLocation || trim(row.searchLocation),
+                status: 'active',
+                stage: 'new_leads',
+                tags: [] as string[],
+                source: 'import',
+                notes: noteLines.length > 0 ? noteLines.join('\n') : '',
+            };
+        };
+
+        // Map a parsed JSON lead object (existing format) to the API shape
+        const mapJsonLead = (lead: any) => {
+            // If a JSON lead has top-level companyLinkedin/interestKeywords (e.g. from an older export),
+            // fold them into authInformation so they survive without needing DB columns.
+            const topInterestKeywords = String(lead?.interestKeywords || '').trim();
+            const topCompanyLinkedin = String(lead?.companyLinkedin || '').trim();
+            const baseAuth = (lead.authInformation && typeof lead.authInformation === 'object') ? { ...lead.authInformation } : {};
+            const mergedAuth: any = { ...baseAuth };
+            if (topInterestKeywords) mergedAuth.interest_keywords = topInterestKeywords;
+            if (topCompanyLinkedin) mergedAuth.company_linkedin = topCompanyLinkedin;
+
+            return {
+                name: String(lead?.name || '').trim(),
+                company: String(lead?.company || '').trim(),
+                email: String(lead?.email || '').trim(),
+                companyOwner: lead?.companyOwner || '',
+                location: lead.location || '',
+                website: lead.website || '',
+                phone: lead.phone || '',
+                linkedinProfile: lead.linkedinProfile || '',
+                authInformation: Object.keys(mergedAuth).length > 0 ? mergedAuth : (lead.authInformation ?? null),
+                status: lead.status || 'active',
+            stage: lead.stage || 'new_leads',
+            notes: lead.notes || '',
+            tags: Array.isArray(lead.tags) ? lead.tags : [],
+            source: lead.source || 'import',
+            industry: lead.industry || '',
+            googleAds: !!lead.googleAds,
+            googleAdsChecked: !!lead.googleAdsChecked,
+            organicRanking: lead.organicRanking ?? null,
+            isHighValue: !!lead.isHighValue,
+            dealValue: lead.dealValue ?? null,
+            probability: lead.probability ?? null,
+            budget: lead.budget ?? null,
+            closedDate: lead.closedDate || null,
+            closedReason: lead.closedReason || '',
+            lossReason: lead.lossReason || '',
+            lossDescription: lead.lossDescription || '',
+            address: lead.address || '',
+            latitude: lead.latitude ?? null,
+            longitude: lead.longitude ?? null,
+            rating: lead.rating ?? null,
+            reviews: lead.reviews ?? null,
+            lastContactedAt: lead.lastContactedAt || null,
+            lastEmailedAt: lead.lastEmailedAt || null,
+            emailAutomationEnabled: typeof lead.emailAutomationEnabled === 'boolean' ? lead.emailAutomationEnabled : true,
+            emailSequenceStartDate: lead.emailSequenceStartDate || null,
+            emailSequenceActive: !!lead.emailSequenceActive,
+            nextScheduledEmail: lead.nextScheduledEmail || null,
+            emailSequenceStep: lead.emailSequenceStep ?? null,
+            emailStoppedReason: lead.emailStoppedReason || '',
+            emailRetryCount: lead.emailRetryCount ?? null,
+            emailFailureCount: lead.emailFailureCount ?? null,
+            emailLastAttempt: lead.emailLastAttempt || null,
+            emailStatus: lead.emailStatus || '',
+            emailErrors: lead.emailErrors ?? null,
+            emailValidationStatus: lead.emailValidationStatus || 'notScanned',
+            emailValidationCheckedAt: lead.emailValidationCheckedAt || null,
+            emailValidationDetails: lead.emailValidationDetails ?? null,
+            outreachRecipient: lead.outreachRecipient || 'lead',
+            senderIdentity: lead.senderIdentity || 'company',
+            emailHistory: lead.emailHistory ?? null,
+            nextFollowUpDate: lead.nextFollowUpDate || null,
+            followUpCount: lead.followUpCount ?? null,
+            createdAt: lead.createdAt || null,
+        };
+        };
+
+        // Collect all parsed leads across files
+        const allParsedLeads: any[] = [];
+        let skippedNoEmail = 0;
+        let totalRowsSeen = 0;
+
+        for (const file of validFiles) {
+            try {
+                const text = await file.text();
+                const isCsv = file.name.toLowerCase().endsWith('.csv');
+                let rawLeads: any[] = [];
+
+                if (isCsv) {
+                    rawLeads = parseCsv(text).map(mapCsvRow);
+                } else {
+                    const parsed = JSON.parse(text);
+                    rawLeads = (Array.isArray(parsed)
+                        ? parsed
+                        : (Array.isArray((parsed as any)?.leads) ? (parsed as any).leads : [parsed])
+                    ).map(mapJsonLead);
+                }
+
+                totalRowsSeen += rawLeads.length;
+                // Email is mandatory - skip rows without a valid-looking email
+                for (const lead of rawLeads) {
+                    if (!lead.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(lead.email)) {
+                        skippedNoEmail += 1;
+                        continue;
+                    }
+                    allParsedLeads.push(lead);
+                }
+            } catch (err) {
+                console.error(`Failed to parse file ${file.name}:`, err);
+                toast.error(`Failed to parse ${file.name}`);
+            }
+        }
+
+        // Require at least name + email for CSV imports; company can fall back to a placeholder
+        const cleanedLeads = allParsedLeads
+            .map((lead: any) => ({
+                ...lead,
+                // Ensure required fields have a value; company can default to "-" if missing on CSV
+                company: lead.company || (lead as any).industry || '-',
+            }))
+            .filter((lead: any) => lead.name && lead.email);
+
+        if (cleanedLeads.length === 0) {
+            const msg = skippedNoEmail > 0
+                ? `No valid leads found. ${skippedNoEmail} row(s) skipped because email is required.`
+                : "No valid leads found. Each lead must include an email address.";
+            toast.error(msg);
+            return;
+        }
+
+        // Upload to backend; assign to current user via header
+        let successCount = 0;
+        let failureCount = 0;
+
+        const results = await Promise.allSettled(
+            cleanedLeads.map((lead: any) =>
+                fetch('/api/leads', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-user-id': userId,
+                    },
+                    body: JSON.stringify(lead),
+                }).then(async (res) => {
+                    if (!res.ok) {
+                        const data = await res.json().catch(() => ({}));
+                        throw new Error(data?.error || `HTTP ${res.status}`);
+                    }
+                    return res.json();
+                })
+            )
+        );
+
+        results.forEach((r) => {
+            if (r.status === 'fulfilled' && r.value?.success) {
+                successCount += 1;
+            } else {
+                failureCount += 1;
+            }
+        });
+
+        if (successCount > 0) {
+            toast.success(`Imported ${successCount} lead${successCount !== 1 ? 's' : ''}${skippedNoEmail > 0 ? ` (${skippedNoEmail} skipped — no email)` : ''}`);
+        }
+        if (failureCount > 0) {
+            toast.error(`${failureCount} lead${failureCount !== 1 ? 's' : ''} failed (duplicates or validation)`);
+        }
+        if (successCount === 0 && failureCount === 0 && skippedNoEmail > 0) {
+            toast.error(`All ${skippedNoEmail} row(s) were skipped because email is required.`);
+        }
 
             // Refresh data to reflect new leads
             await fetchLeads();
@@ -1537,7 +1720,7 @@ const LeadsCollection = () => {
 
         } catch (error) {
             console.error('Error importing leads:', error);
-            toast.error("Failed to import leads. Please check the JSON file.");
+            toast.error("Failed to import leads. Please check the file format.");
         }
     };
 
@@ -3109,7 +3292,7 @@ const LeadsCollection = () => {
                         </DialogDescription>
                     </DialogHeader>
                     <div className="grid grid-cols-1 gap-3">
-                        <div 
+                        <div
                             className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors"
                             onDragOver={(e) => {
                                 e.preventDefault();
@@ -3121,10 +3304,11 @@ const LeadsCollection = () => {
                             onDrop={(e) => {
                                 e.preventDefault();
                                 e.currentTarget.classList.remove('border-blue-400', 'bg-blue-50');
-                                const file = e.dataTransfer.files[0];
-                                if (file && file.name.toLowerCase().endsWith('.json')) {
-                                    importLeads(file);
-                                } else if (file) {
+                                const dropped = Array.from(e.dataTransfer.files);
+                                const valid = dropped.filter(f => f.name.toLowerCase().endsWith('.json') || f.name.toLowerCase().endsWith('.csv'));
+                                if (valid.length > 0) {
+                                    importLeads(valid);
+                                } else if (dropped.length > 0) {
                                     toast.error(String(t("onlyJsonFilesAccepted")));
                                 }
                             }}
@@ -3133,14 +3317,18 @@ const LeadsCollection = () => {
                             <p className="text-sm text-gray-600 mb-2">
                                 {String(t("dropJsonFileHere"))}
                             </p>
+                            <p className="text-xs text-gray-500 mb-2">
+                                Supports CSV (merged format: name, company, role, email, linkedin, company_linkedin, interest_keywords, ...) and JSON. Multiple files allowed.
+                            </p>
                             <input
                                 type="file"
-                                accept=".json,application/json"
+                                accept=".json,application/json,.csv,text/csv"
+                                multiple
                                 ref={fileInputRef}
                                 onChange={(e) => {
-                                    const file = e.target.files?.[0];
-                                    if (file) {
-                                        importLeads(file);
+                                    const files = Array.from(e.target.files || []);
+                                    if (files.length > 0) {
+                                        importLeads(files);
                                         // reset so same file selection triggers change again later
                                         e.currentTarget.value = '';
                                     }

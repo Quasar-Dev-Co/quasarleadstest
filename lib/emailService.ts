@@ -349,6 +349,9 @@ class EmailService {
       leadId?: string;
       searchService?: string;
       searchLocation?: string;
+      interestKeywords?: string | null;
+      linkedinProfile?: string | null;
+      companyLinkedin?: string | null;
     },
     userId?: string
   ): Promise<{ success: boolean; messageId?: string; error?: string; trackingId?: string }> {
@@ -376,6 +379,9 @@ class EmailService {
     const variables = {
       LEAD_NAME: leadData.name,
       COMPANY_NAME: leadData.company,
+      INTEREST_KEYWORDS: leadData.interestKeywords || '',
+      LEAD_LINKEDIN: leadData.linkedinProfile || '',
+      COMPANY_LINKEDIN: leadData.companyLinkedin || '',
       SENDER_NAME: leadData.senderOverride || companySettings?.senderName || process.env.SENDER_NAME || 'QuasarLeads Team',
       SENDER_EMAIL: companySettings?.senderEmail || 'info@quasarseo.nl',
       COMPANY_SERVICE: companySettings?.service || 'AI-powered lead generation',

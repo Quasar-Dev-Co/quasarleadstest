@@ -36,6 +36,9 @@ function replaceVariables(content: string, testLead: any, companySettings: any, 
     '{{OWNER_NAME}}': testLead.name || 'Test Lead',
     '{{COMPANY_NAME}}': testLead.company || 'Test Company',
     '{{COMPANY_REVIEW}}': '4.5 stars with 127 positive reviews',
+    '{{INTEREST_KEYWORDS}}': '',
+    '{{LEAD_LINKEDIN}}': '',
+    '{{COMPANY_LINKEDIN}}': '',
     '{{LOCATION}}': 'Test Location',
     '{{EMAIL}}': 'test@example.com',
     '{{SENDER_NAME}}': companySettings.senderName || 'QuasarLeads Team',
@@ -70,7 +73,8 @@ async function generateContentFromPrompt(
   testLead: any,
   companySettings: any,
   stage: string,
-  apiKey: string
+  apiKey: string,
+  customVariables?: Record<string, string>
 ): Promise<string> {
   if (!apiKey) {
     // No API key available - fall back to using the prompt as the body so the test still sends
@@ -92,6 +96,9 @@ Lead context:
 - Lead name: ${testLead?.name || ''}
 - Company: ${testLead?.company || ''}
 - Stage: ${stageLabel}
+- Interest keywords: ${customVariables?.['{{INTEREST_KEYWORDS}}'] || 'N/A'}
+- Lead LinkedIn: ${customVariables?.['{{LEAD_LINKEDIN}}'] || 'N/A'}
+- Company LinkedIn: ${customVariables?.['{{COMPANY_LINKEDIN}}'] || 'N/A'}
 
 Sender/business context:
 - Service: ${companySettings?.service || 'AI-powered lead generation'}
@@ -100,7 +107,7 @@ Sender/business context:
 - Sender name placeholder: {{SENDER_NAME}}
 
 Hard requirements:
-1) Include these placeholders naturally if relevant: {{LEAD_NAME}}, {{COMPANY_NAME}}, {{COMPANY_REVIEW}}, {{SENDER_NAME}}, {{COMPANY_SERVICE}}, {{TARGET_INDUSTRY}}
+1) Include these placeholders naturally if relevant: {{LEAD_NAME}}, {{COMPANY_NAME}}, {{COMPANY_REVIEW}}, {{INTEREST_KEYWORDS}}, {{LEAD_LINKEDIN}}, {{COMPANY_LINKEDIN}}, {{SENDER_NAME}}, {{COMPANY_SERVICE}}, {{TARGET_INDUSTRY}}
 2) Keep it specific and meaningful (not generic filler)
 3) Return only the HTML body content.`;
 
@@ -183,7 +190,8 @@ async function assembleFinalEmail(
       testLead,
       companySettings,
       template.stage || 'test',
-      apiKey
+      apiKey,
+      customVariables
     );
 
     const processedContent = replaceVariables(generatedContent, testLead, companySettings, customVariables);

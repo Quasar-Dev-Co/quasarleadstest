@@ -217,6 +217,22 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Merge interestKeywords & companyLinkedin into the authInformation JSON blob
+    // (avoids needing a Prisma migration / db push for new columns)
+    const interestKeywordsRaw = (body as any).interestKeywords;
+    const companyLinkedinRaw = (body as any).companyLinkedin;
+    const interestKeywordsStr = interestKeywordsRaw ? String(interestKeywordsRaw).trim() : '';
+    const companyLinkedinStr = companyLinkedinRaw ? String(companyLinkedinRaw).trim() : '';
+
+    const baseAuthInfo = parseOptionalJson(authInformation) || {};
+    const authInformationWithExtras: any = {
+      ...baseAuthInfo,
+      ...(interestKeywordsStr ? { interest_keywords: interestKeywordsStr } : {}),
+      ...(companyLinkedinStr ? { company_linkedin: companyLinkedinStr } : {}),
+    };
+    const finalAuthInformation =
+      Object.keys(authInformationWithExtras).length > 0 ? authInformationWithExtras : null;
+
     // Check if lead with same email already exists
     const existingLead = await prisma.lead.findFirst({
       where: {
@@ -273,7 +289,7 @@ export async function POST(req: NextRequest) {
         longitude: parseOptionalNumber(longitude),
         rating: parseOptionalNumber(rating),
         reviews: parseOptionalInt(reviews),
-        authInformation: parseOptionalJson(authInformation),
+        authInformation: finalAuthInformation,
         lastContactedAt: parseOptionalDate(lastContactedAt),
         lastEmailedAt: parseOptionalDate(lastEmailedAt),
         emailAutomationEnabled: parseBoolean(emailAutomationEnabled, true),

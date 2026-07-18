@@ -126,6 +126,16 @@ function getAuthorName(lead: any): string {
   return authInfo.owner_name || lead.companyOwner || authInfo.executive_name || lead.name || 'Team';
 }
 
+function getInterestKeywords(lead: any): string {
+  const authInfo = (lead.authInformation as any) || {};
+  return authInfo.interest_keywords || '';
+}
+
+function getCompanyLinkedin(lead: any): string {
+  const authInfo = (lead.authInformation as any) || {};
+  return authInfo.company_linkedin || '';
+}
+
 function replaceEmailVariables(content: string, lead: any, companySettings: any = null): string {
   const senderIdentity = lead?.senderIdentity || companySettings?.defaultSenderIdentity || 'company';
   const chosenSenderName = senderIdentity === 'author'
@@ -144,6 +154,9 @@ function replaceEmailVariables(content: string, lead: any, companySettings: any 
     '{{OWNER_NAME}}': getAuthorName(lead),
     '{{COMPANY_NAME}}': lead.company || 'your company',
     '{{COMPANY_REVIEW}}': companyReview,
+    '{{INTEREST_KEYWORDS}}': getInterestKeywords(lead),
+    '{{LEAD_LINKEDIN}}': (lead as any).linkedinProfile || '',
+    '{{COMPANY_LINKEDIN}}': getCompanyLinkedin(lead),
     '{{LOCATION}}': lead.location || 'your area',
     '{{EMAIL}}': lead.email,
     '{{SENDER_NAME}}': chosenSenderName,
@@ -190,6 +203,9 @@ Lead context:
 - Website: ${lead?.website || ''}
 - Stage: ${stageLabel}
 - Company review context: ${lead?.rating ? `${lead.rating} stars` : 'N/A'}${lead?.reviews ? `, ${lead.reviews} reviews` : ''}
+- Interest keywords: ${getInterestKeywords(lead) || 'N/A'}
+- Lead LinkedIn: ${(lead as any).linkedinProfile || 'N/A'}
+- Company LinkedIn: ${getCompanyLinkedin(lead) || 'N/A'}
 
 Sender/business context:
 - Service: ${companySettings?.service || 'AI-powered lead generation'}
@@ -204,7 +220,7 @@ Author/company contact context:
 - Executive name: ${authInfo?.executive_name || ''}
 
 Hard requirements:
-1) Include these placeholders naturally if relevant: {{LEAD_NAME}}, {{COMPANY_NAME}}, {{COMPANY_REVIEW}}, {{SENDER_NAME}}, {{COMPANY_SERVICE}}, {{TARGET_INDUSTRY}}
+1) Include these placeholders naturally if relevant: {{LEAD_NAME}}, {{COMPANY_NAME}}, {{COMPANY_REVIEW}}, {{INTEREST_KEYWORDS}}, {{LEAD_LINKEDIN}}, {{COMPANY_LINKEDIN}}, {{SENDER_NAME}}, {{COMPANY_SERVICE}}, {{TARGET_INDUSTRY}}
 2) Keep it specific and meaningful (not generic filler)
 3) Return only the HTML body content.`;
 
