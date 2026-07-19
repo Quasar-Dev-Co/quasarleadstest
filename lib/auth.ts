@@ -30,12 +30,19 @@ export interface SignupResult {
   success: boolean;
   error?: string;
   user?: any;
+  verificationEmailSent?: boolean;
 }
 
 export interface LoginResult {
   success: boolean;
   error?: string;
   user?: any;
+}
+
+export interface VerifyEmailResult {
+  success: boolean;
+  error?: string;
+  message?: string;
 }
 
 export const auth = {
@@ -89,7 +96,8 @@ export const auth = {
       if (response.ok) {
         return {
           success: true,
-          user: data.user
+          user: data.user,
+          verificationEmailSent: data.verificationEmailSent
         };
       } else {
         return {
@@ -103,6 +111,50 @@ export const auth = {
         success: false,
         error: 'Network error during signup'
       };
+    }
+  },
+
+  // Verify email with 6-digit code
+  async verifyEmail(email: string, code: string): Promise<VerifyEmailResult> {
+    try {
+      const response = await fetch('/api/auth/verify-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, code }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        return { success: true, message: data.message };
+      } else {
+        return { success: false, error: data.error || 'Verification failed' };
+      }
+    } catch (error) {
+      console.error('Verify email error:', error);
+      return { success: false, error: 'Network error during verification' };
+    }
+  },
+
+  // Resend verification code
+  async resendVerificationCode(email: string): Promise<VerifyEmailResult> {
+    try {
+      const response = await fetch('/api/auth/resend-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        return { success: true, message: data.message };
+      } else {
+        return { success: false, error: data.error || 'Failed to resend code' };
+      }
+    } catch (error) {
+      console.error('Resend code error:', error);
+      return { success: false, error: 'Network error while resending code' };
     }
   },
 
