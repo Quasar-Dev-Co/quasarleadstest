@@ -291,8 +291,14 @@ class EmailService {
           from: `"${senderName}" <${senderEmail}>`,
           to: config.to,
           subject: config.subject,
-          text: config.text || '',
+          text: config.text || htmlWithTracking.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim(),
           html: htmlWithTracking,
+          headers: {
+            'List-Unsubscribe': `<mailto:${senderEmail}?subject=Unsubscribe>`,
+            'List-Unsubscribe-Posting': 'List-Unsubscribe=One-Click',
+            'X-Auto-Response-Suppress': 'All',
+            'Auto-Submitted': 'auto-replied',
+          },
         });
 
         if (!info.messageId || !info.messageId.includes('@')) {

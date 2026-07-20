@@ -3,14 +3,37 @@ import { isBotRequest, identifyBot } from '@/lib/bot-detection';
 
 /**
  * Get the base URL for tracking pixel requests.
- * Falls back to APP_BASE_URL, then NEXT_PUBLIC_APP_URL.
+ *
+ * CRITICAL: This URL must be publicly accessible (HTTPS) so that email
+ * clients can load the tracking pixel. Using localhost produces broken
+ * links which (a) break open tracking and (b) increase spam confidence.
+ *
+ * Resolution order:
+ *   1. NEXT_PUBLIC_APP_URL  — if set to a real (non-localhost) URL
+ *   2. VERCEL_URL           — auto-set by Vercel on every deployment
+ *   3. APP_BASE_URL         — if set to a real (non-localhost) URL
+ *   4. http://localhost:3000 — local development fallback only
  */
 function getBaseUrl(): string {
-  return (
-    process.env.NEXT_PUBLIC_APP_URL ||
-    process.env.APP_BASE_URL ||
-    'http://localhost:3000'
-  ).replace(/\/$/, '');
+  const candidates = [
+    process.env.NEXT_PUBLIC_APP_URL,
+    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null,
+    process.env.APP_BASE_URL,
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const normalized = candidate.trim().replace(/\/$/, '');
+    if (!normalized) continue;
+    // Reject localhost / 127.0.0.1 — never embed these in emails going to real recipients
+    if (normalized.includes('localhost') || normalized.includes('127.0.0.1')) continue;
+    return normalized;
+  }
+
+  // Local development only — emails sent from here won't track opens, but
+  // that's acceptable for local dev. Production must set NEXT_PUBLIC_APP_URL
+  // or rely on VERCEL_URL.
+  return 'http://localhost:3000';
 }
 
 /**
