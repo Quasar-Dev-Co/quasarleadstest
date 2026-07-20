@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { isBotRequest, identifyBot } from '@/lib/bot-detection';
 
 /**
  * Get the base URL for tracking pixel requests.
@@ -60,16 +61,51 @@ export function injectTrackingPixel(html: string, trackingId: string): string {
 
 /**
  * Mark an email as opened. Called by the tracking pixel endpoint.
- * Increments openCount for each subsequent open.
+ *
+ * Bot/crawler/scanner requests are recorded (for debugging) but do NOT count
+ * as real opens — `opened` is only set to true and `openCount` is only
+ * incremented when a real email client loads the pixel.
+ *
+ * @param trackingId  The tracking record ID
+ * @param userAgent   User-Agent header from the pixel request
+ * @param ipAddress   Client IP from the pixel request
  */
-export async function markEmailOpened(trackingId: string): Promise<void> {
+export async function markEmailOpened(
+  trackingId: string,
+  userAgent?: string | null,
+  ipAddress?: string | null
+): Promise<void> {
   try {
+    const isBot = isBotRequest(userAgent, ipAddress);
+
+    if (isBot) {
+      // Record the bot hit for debugging/analytics, but do NOT mark as opened
+      // and do NOT increment openCount. Only increment botOpenCount.
+      const botLabel = identifyBot(userAgent);
+      console.log(`🤖 Bot open detected for ${trackingId} (${botLabel}) — not counted as real open`);
+
+      await prisma.emailOpenTracking.update({
+        where: { id: trackingId },
+        data: {
+          isBot: true,
+          botOpenCount: { increment: 1 },
+          userAgent: userAgent || null,
+          ipAddress: ipAddress || null,
+        },
+      });
+      return;
+    }
+
+    // Real email client open — mark as opened and increment openCount
     await prisma.emailOpenTracking.update({
       where: { id: trackingId },
       data: {
         opened: true,
         openedAt: new Date(),
         openCount: { increment: 1 },
+        userAgent: userAgent || null,
+        ipAddress: ipAddress || null,
+        isBot: false,
       },
     });
   } catch (error) {

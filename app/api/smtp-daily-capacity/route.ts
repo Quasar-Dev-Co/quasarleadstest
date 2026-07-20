@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getConfiguredSmtpAccounts, SMTP_DAILY_LIMIT_PER_ACCOUNT } from '@/lib/smtp-rotation';
+import { getConfiguredSmtpAccounts, getAccountDailyLimit, SMTP_DAILY_LIMIT_PER_ACCOUNT } from '@/lib/smtp-rotation';
 
 export async function GET(request: NextRequest) {
   try {
@@ -29,7 +29,8 @@ export async function GET(request: NextRequest) {
     const credentials = (user.credentials as Record<string, any>) || {};
     const configuredSmtpAccounts = getConfiguredSmtpAccounts(credentials);
     const configuredAccountCount = configuredSmtpAccounts.length;
-    const dailyCapacity = configuredAccountCount * SMTP_DAILY_LIMIT_PER_ACCOUNT;
+    // Use per-account limits (sum of each account's configured dailyLimit, default 100)
+    const dailyCapacity = configuredSmtpAccounts.reduce((sum, acc) => sum + getAccountDailyLimit(acc), 0);
 
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -47,13 +48,14 @@ export async function GET(request: NextRequest) {
     const perAccount = configuredSmtpAccounts.map((account, index) => {
       const key = `${account.SMTP_HOST}|${account.SMTP_USER}`;
       const sentCount = usageMap.get(key) ?? 0;
+      const accountLimit = getAccountDailyLimit(account);
       return {
         index: index + 1,
         smtpUser: account.SMTP_USER,
         smtpHost: account.SMTP_HOST,
         sentCount,
-        remaining: Math.max(SMTP_DAILY_LIMIT_PER_ACCOUNT - sentCount, 0),
-        limit: SMTP_DAILY_LIMIT_PER_ACCOUNT,
+        remaining: Math.max(accountLimit - sentCount, 0),
+        limit: accountLimit,
       };
     });
 
@@ -63,7 +65,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       data: {
-        dailyLimitPerAccount: SMTP_DAILY_LIMIT_PER_ACCOUNT,
+        dailyLimitPerAccount: SMTP_DAILY_LIMIT_PER_ACCOUNT, // default, kept for backward compat
         configuredAccountCount,
         dailyCapacity,
         sentToday,

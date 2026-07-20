@@ -809,6 +809,12 @@ model EmailOpenTracking {
   openCount      Int       @default(0)
   createdAt      DateTime  @default(now())
 
+  // Bot detection fields — bot/crawler pixel loads are recorded but NOT counted as real opens
+  userAgent      String?   @db.Text
+  ipAddress      String?   @db.VarChar(100)
+  isBot          Boolean   @default(false)
+  botOpenCount   Int       @default(0)
+
   @@index([leadId])
   @@index([userId])
   @@index([opened])

@@ -8,6 +8,7 @@ export type SmtpAccount = {
   SMTP_PORT: string;
   SMTP_USER: string;
   SMTP_PASSWORD: string;
+  dailyLimit?: number;
 };
 
 export type SelectedSmtpAccount = SmtpAccount & {
@@ -27,12 +28,23 @@ function getTodayDate(): Date {
 }
 
 export function normalizeSmtpAccount(raw: any): SmtpAccount {
+  const parsedLimit = Number(raw?.dailyLimit);
+  const dailyLimit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.floor(parsedLimit) : undefined;
   return {
     SMTP_HOST: String(raw?.SMTP_HOST ?? raw?.host ?? '').trim(),
     SMTP_PORT: String(raw?.SMTP_PORT ?? raw?.port ?? '').trim(),
     SMTP_USER: String(raw?.SMTP_USER ?? raw?.user ?? '').trim(),
     SMTP_PASSWORD: String(raw?.SMTP_PASSWORD ?? raw?.password ?? '').trim(),
+    dailyLimit,
   };
+}
+
+/**
+ * Returns the effective daily send limit for an account.
+ * Falls back to the default constant (100) when not configured.
+ */
+export function getAccountDailyLimit(account: SmtpAccount): number {
+  return account.dailyLimit && account.dailyLimit > 0 ? account.dailyLimit : SMTP_DAILY_LIMIT_PER_ACCOUNT;
 }
 
 export function getConfiguredSmtpAccounts(credentials: Record<string, any>): SmtpAccount[] {
@@ -60,7 +72,11 @@ export function getConfiguredSmtpAccounts(credentials: Record<string, any>): Smt
     if (!isComplete) continue;
 
     const key = `${account.SMTP_HOST}|${account.SMTP_PORT}|${account.SMTP_USER}|${account.SMTP_PASSWORD}`;
-    if (!unique.has(key)) {
+    const existing = unique.get(key);
+    if (!existing) {
+      unique.set(key, account);
+    } else if (!existing.dailyLimit && account.dailyLimit) {
+      // Prefer the entry that has an explicit dailyLimit set
       unique.set(key, account);
     }
   }
@@ -84,7 +100,7 @@ async function getSentCountForAccount(
 }
 
 export async function getDailyUsageForUser(userId: string): Promise<{
-  accounts: Array<{ smtpUser: string; smtpHost: string; sentCount: number; date: Date }>;
+  accounts: Array<{ smtpUser: string; smtpHost: string; sentCount: number; date: Date; dailyLimit: number }>;
   totalSentToday: number;
   totalCapacity: number;
 }> {
@@ -105,11 +121,12 @@ export async function getDailyUsageForUser(userId: string): Promise<{
   const accounts = configured.map((account) => {
     const key = `${account.SMTP_HOST}|${account.SMTP_USER}`;
     const sentCount = usageMap.get(key) ?? 0;
-    return { smtpUser: account.SMTP_USER, smtpHost: account.SMTP_HOST, sentCount, date: today };
+    const dailyLimit = getAccountDailyLimit(account);
+    return { smtpUser: account.SMTP_USER, smtpHost: account.SMTP_HOST, sentCount, date: today, dailyLimit };
   });
 
   const totalSentToday = accounts.reduce((sum, a) => sum + a.sentCount, 0);
-  const totalCapacity = configured.length * SMTP_DAILY_LIMIT_PER_ACCOUNT;
+  const totalCapacity = accounts.reduce((sum, a) => sum + a.dailyLimit, 0);
 
   return { accounts, totalSentToday, totalCapacity };
 }
@@ -135,9 +152,10 @@ export async function selectSmtpAccountForSending(userId: string): Promise<SmtpR
 
   for (let i = 0; i < configured.length; i++) {
     const account = configured[i];
+    const accountLimit = getAccountDailyLimit(account);
     const sentToday = await getSentCountForAccount(userId, account.SMTP_USER, account.SMTP_HOST, today);
 
-    if (sentToday >= SMTP_DAILY_LIMIT_PER_ACCOUNT) {
+    if (sentToday >= accountLimit) {
       continue;
     }
 
@@ -165,7 +183,7 @@ export async function selectSmtpAccountForSending(userId: string): Promise<SmtpR
 
     try {
       await transporter.verify();
-      const remainingToday = SMTP_DAILY_LIMIT_PER_ACCOUNT - sentToday;
+      const remainingToday = accountLimit - sentToday;
 
       if (i > 0) {
         console.warn(`⚠️ SMTP rotated to account #${i + 1} (${account.SMTP_USER}) for user ${userId} — previous accounts exhausted or failed`);
@@ -188,7 +206,7 @@ export async function selectSmtpAccountForSending(userId: string): Promise<SmtpR
   }
 
   if (errors.length === 0) {
-    return { ok: false, reason: 'all_exhausted', errors: ['All SMTP accounts have reached their daily limit of ' + SMTP_DAILY_LIMIT_PER_ACCOUNT + ' emails'] };
+    return { ok: false, reason: 'all_exhausted', errors: ['All SMTP accounts have reached their daily limit'] };
   }
 
   return { ok: false, reason: 'all_failed', errors };
