@@ -4,16 +4,24 @@ import { markEmailOpened } from '@/lib/email-tracking';
 /**
  * GET handler — serves a 1x1 transparent GIF pixel and marks the email as opened.
  * This endpoint is hit when a recipient's email client loads the tracking pixel image.
+ *
+ * Bot/crawler/scanner requests are recorded but NOT counted as real opens.
  */
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ trackingId: string }> }
 ) {
   const { trackingId } = await params;
 
   if (trackingId) {
-    // Fire-and-forget: mark the email as opened
-    markEmailOpened(trackingId).catch(() => {});
+    // Extract User-Agent and client IP for bot detection
+    const userAgent = request.headers.get('user-agent') || '';
+    const forwardedFor = request.headers.get('x-forwarded-for');
+    const realIp = request.headers.get('x-real-ip');
+    const ipAddress = (forwardedFor ? forwardedFor.split(',')[0].trim() : null) || realIp || null;
+
+    // Fire-and-forget: mark the email as opened (with bot filtering)
+    markEmailOpened(trackingId, userAgent, ipAddress).catch(() => {});
   }
 
   // 1x1 transparent GIF
@@ -33,6 +41,7 @@ export async function GET(
       'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
       'Pragma': 'no-cache',
       'Expires': '0',
+      'Vary': 'User-Agent',
     },
   });
 }

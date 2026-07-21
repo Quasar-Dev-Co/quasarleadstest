@@ -311,15 +311,9 @@ async function assembleFinalEmail(template: any, lead: any, companySettings: any
     const processedSignature = (template.emailSignature && template.emailSignature.trim()) ? replaceEmailVariables(template.emailSignature, lead, companySettings) : '';
     const processedMediaLinks = (template.mediaLinks && template.mediaLinks.trim()) ? replaceEmailVariables(template.mediaLinks, lead, companySettings) : '';
 
-    finalHTML = `
-      <div style="font-family: Arial, sans-serif; max-width: 100%; margin: 0 auto; background: #ffffff;">
-        <div style="padding: 20px; background: white;">
-          ${processedContent}
-          ${processedMediaLinks ? `<div style="margin: 40px 0; text-align: center; line-height: 0;">${processedMediaLinks}</div>` : ''}
-          ${processedSignature ? `<div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e0e0e0; line-height: 1.5;">${processedSignature}</div>` : ''}
-        </div>
-      </div>
-    `;
+    // Lightweight HTML — avoid nested divs and heavy inline styles which
+    // increase Spam Confidence Level. Keep it simple and text-like.
+    finalHTML = `${processedContent}${processedMediaLinks ? `<div style="margin:24px 0;text-align:center;">${processedMediaLinks}</div>` : ''}${processedSignature ? `<div style="margin-top:24px;padding-top:16px;border-top:1px solid #eee;">${processedSignature}</div>` : ''}`;
     finalText = `${processedContent.replace(/<[^>]*>/g, '')}\n\n${processedMediaLinks ? 'Media: ' + processedMediaLinks.replace(/<[^>]*>/g, '') + '\n\n' : ''}${processedSignature.replace(/<[^>]*>/g, '')}`;
   } else {
     finalHTML = replaceEmailVariables(template.htmlContent || '', lead, companySettings);
@@ -380,12 +374,29 @@ async function sendEmailWithRetry(lead: any, stage: string, retryCount: number =
     });
     const finalHtml = trackingId ? injectTrackingPixel(htmlContent, trackingId) : htmlContent;
 
+    // Build a plain-text version from the HTML if textContent is empty —
+    // having a proper text alternative lowers Spam Confidence Level.
+    const finalText = (textContent && textContent.trim())
+      ? textContent
+      : finalHtml.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+
+    // List-Unsubscribe header — major ISPs (Gmail, Outlook, Yahoo) use this
+    // as a positive trust signal and it reduces spam complaints.
+    const unsubscribeEmail = senderEmail;
+    const unsubscribeHeaders: Record<string, string> = {
+      'List-Unsubscribe': `<mailto:${unsubscribeEmail}?subject=Unsubscribe>`,
+      'List-Unsubscribe-Posting': 'List-Unsubscribe=One-Click',
+      'X-Auto-Response-Suppress': 'All',
+      'Auto-Submitted': 'auto-replied',
+    };
+
     const info = await transporter.sendMail({
       from: { name: fromName, address: senderEmail },
       to: chosenTo,
       subject: subject,
-      text: textContent,
+      text: finalText,
       html: finalHtml,
+      headers: unsubscribeHeaders,
     });
 
     if (userId && smtpAccount.index >= 0) {

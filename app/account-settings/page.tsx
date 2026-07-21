@@ -54,6 +54,7 @@ interface SmtpAccount {
   SMTP_PORT: string;
   SMTP_USER: string;
   SMTP_PASSWORD: string;
+  dailyLimit?: number;
 }
 
 interface ImapAccount {
@@ -68,14 +69,20 @@ const createEmptySmtpAccount = (): SmtpAccount => ({
   SMTP_PORT: "",
   SMTP_USER: "",
   SMTP_PASSWORD: "",
+  dailyLimit: SMTP_DAILY_LIMIT_PER_ACCOUNT,
 });
 
-const normalizeSmtpAccount = (raw: any): SmtpAccount => ({
-  SMTP_HOST: String(raw?.SMTP_HOST ?? raw?.host ?? ""),
-  SMTP_PORT: String(raw?.SMTP_PORT ?? raw?.port ?? ""),
-  SMTP_USER: String(raw?.SMTP_USER ?? raw?.user ?? ""),
-  SMTP_PASSWORD: String(raw?.SMTP_PASSWORD ?? raw?.password ?? ""),
-});
+const normalizeSmtpAccount = (raw: any): SmtpAccount => {
+  const parsedLimit = Number(raw?.dailyLimit);
+  const dailyLimit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.floor(parsedLimit) : SMTP_DAILY_LIMIT_PER_ACCOUNT;
+  return {
+    SMTP_HOST: String(raw?.SMTP_HOST ?? raw?.host ?? ""),
+    SMTP_PORT: String(raw?.SMTP_PORT ?? raw?.port ?? ""),
+    SMTP_USER: String(raw?.SMTP_USER ?? raw?.user ?? ""),
+    SMTP_PASSWORD: String(raw?.SMTP_PASSWORD ?? raw?.password ?? ""),
+    dailyLimit,
+  };
+};
 
 const createEmptyImapAccount = (): ImapAccount => ({
   IMAP_HOST: "",
@@ -287,6 +294,9 @@ export default function AccountSettingsPage() {
         SMTP_PORT: account.SMTP_PORT.trim(),
         SMTP_USER: account.SMTP_USER.trim(),
         SMTP_PASSWORD: account.SMTP_PASSWORD.trim(),
+        dailyLimit: Number.isFinite(account.dailyLimit) && (account.dailyLimit ?? 0) > 0
+          ? Math.floor(account.dailyLimit as number)
+          : SMTP_DAILY_LIMIT_PER_ACCOUNT,
       }))
       .filter((account) => account.SMTP_HOST || account.SMTP_PORT || account.SMTP_USER || account.SMTP_PASSWORD);
 
@@ -410,7 +420,18 @@ export default function AccountSettingsPage() {
   };
 
   const configuredSmtpAccountsCount = getConfiguredSmtpAccountsCount(smtpAccounts);
-  const smtpDailyCapacity = configuredSmtpAccountsCount * SMTP_DAILY_LIMIT_PER_ACCOUNT;
+  // Sum per-account daily limits (each account can have a custom limit)
+  const smtpDailyCapacity = smtpAccounts
+    .filter((acc) => {
+      const isComplete = !!acc.SMTP_HOST.trim() && !!acc.SMTP_PORT.trim() && !!acc.SMTP_USER.trim() && !!acc.SMTP_PASSWORD.trim();
+      return isComplete;
+    })
+    .reduce((sum, acc) => {
+      const limit = Number.isFinite(acc.dailyLimit) && (acc.dailyLimit ?? 0) > 0
+        ? Math.floor(acc.dailyLimit as number)
+        : SMTP_DAILY_LIMIT_PER_ACCOUNT;
+      return sum + limit;
+    }, 0);
   const smtpRemainingToday = Math.max(smtpDailyCapacity - smtpSentToday, 0);
   const smtpUsagePercent = smtpDailyCapacity > 0
     ? Math.min(100, Math.round((smtpSentToday / smtpDailyCapacity) * 100))
@@ -1170,7 +1191,7 @@ export default function AccountSettingsPage() {
                   <div className="border border-border/60 rounded-lg p-4 space-y-3 bg-muted/20">
                     <div className="flex items-center justify-between">
                       <p className="text-sm font-medium">{t('dailySmtpCapacity')}</p>
-                      <Badge variant="secondary">{tf('emailsPerDayPerSmtp', { count: 100 })}</Badge>
+                      <Badge variant="secondary">{tf('emailsPerDayPerSmtp', { count: smtpDailyCapacity })}</Badge>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -1284,6 +1305,34 @@ export default function AccountSettingsPage() {
                               </button>
                             </div>
                           </div>
+                        </div>
+
+                        {/* Daily send limit — editable per SMTP account */}
+                        <div className="space-y-2">
+                          <Label htmlFor={`SMTP_DAILY_LIMIT_${index}`}>
+                            Daily Send Limit
+                            <span className="ml-2 text-xs text-muted-foreground font-normal">
+                              (emails/day for this account — increase or decrease as needed)
+                            </span>
+                          </Label>
+                          <Input
+                            id={`SMTP_DAILY_LIMIT_${index}`}
+                            type="number"
+                            min={1}
+                            max={10000}
+                            value={account.dailyLimit ?? SMTP_DAILY_LIMIT_PER_ACCOUNT}
+                            onChange={(e) => {
+                              const parsed = parseInt(e.target.value, 10);
+                              const next = [...smtpAccounts];
+                              next[index] = {
+                                ...next[index],
+                                dailyLimit: Number.isFinite(parsed) && parsed > 0 ? parsed : SMTP_DAILY_LIMIT_PER_ACCOUNT,
+                              };
+                              setSmtpAccounts(next);
+                            }}
+                            placeholder={String(SMTP_DAILY_LIMIT_PER_ACCOUNT)}
+                            className="max-w-xs"
+                          />
                         </div>
                       </div>
                     ))}

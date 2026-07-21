@@ -1,15 +1,39 @@
 import { prisma } from '@/lib/prisma';
+import { isBotRequest, identifyBot } from '@/lib/bot-detection';
 
 /**
  * Get the base URL for tracking pixel requests.
- * Falls back to APP_BASE_URL, then NEXT_PUBLIC_APP_URL.
+ *
+ * CRITICAL: This URL must be publicly accessible (HTTPS) so that email
+ * clients can load the tracking pixel. Using localhost produces broken
+ * links which (a) break open tracking and (b) increase spam confidence.
+ *
+ * Resolution order:
+ *   1. NEXT_PUBLIC_APP_URL  — if set to a real (non-localhost) URL
+ *   2. VERCEL_URL           — auto-set by Vercel on every deployment
+ *   3. APP_BASE_URL         — if set to a real (non-localhost) URL
+ *   4. http://localhost:3000 — local development fallback only
  */
 function getBaseUrl(): string {
-  return (
-    process.env.NEXT_PUBLIC_APP_URL ||
-    process.env.APP_BASE_URL ||
-    'http://localhost:3000'
-  ).replace(/\/$/, '');
+  const candidates = [
+    process.env.NEXT_PUBLIC_APP_URL,
+    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null,
+    process.env.APP_BASE_URL,
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const normalized = candidate.trim().replace(/\/$/, '');
+    if (!normalized) continue;
+    // Reject localhost / 127.0.0.1 — never embed these in emails going to real recipients
+    if (normalized.includes('localhost') || normalized.includes('127.0.0.1')) continue;
+    return normalized;
+  }
+
+  // Local development only — emails sent from here won't track opens, but
+  // that's acceptable for local dev. Production must set NEXT_PUBLIC_APP_URL
+  // or rely on VERCEL_URL.
+  return 'http://localhost:3000';
 }
 
 /**
@@ -60,16 +84,51 @@ export function injectTrackingPixel(html: string, trackingId: string): string {
 
 /**
  * Mark an email as opened. Called by the tracking pixel endpoint.
- * Increments openCount for each subsequent open.
+ *
+ * Bot/crawler/scanner requests are recorded (for debugging) but do NOT count
+ * as real opens — `opened` is only set to true and `openCount` is only
+ * incremented when a real email client loads the pixel.
+ *
+ * @param trackingId  The tracking record ID
+ * @param userAgent   User-Agent header from the pixel request
+ * @param ipAddress   Client IP from the pixel request
  */
-export async function markEmailOpened(trackingId: string): Promise<void> {
+export async function markEmailOpened(
+  trackingId: string,
+  userAgent?: string | null,
+  ipAddress?: string | null
+): Promise<void> {
   try {
+    const isBot = isBotRequest(userAgent, ipAddress);
+
+    if (isBot) {
+      // Record the bot hit for debugging/analytics, but do NOT mark as opened
+      // and do NOT increment openCount. Only increment botOpenCount.
+      const botLabel = identifyBot(userAgent);
+      console.log(`🤖 Bot open detected for ${trackingId} (${botLabel}) — not counted as real open`);
+
+      await prisma.emailOpenTracking.update({
+        where: { id: trackingId },
+        data: {
+          isBot: true,
+          botOpenCount: { increment: 1 },
+          userAgent: userAgent || null,
+          ipAddress: ipAddress || null,
+        },
+      });
+      return;
+    }
+
+    // Real email client open — mark as opened and increment openCount
     await prisma.emailOpenTracking.update({
       where: { id: trackingId },
       data: {
         opened: true,
         openedAt: new Date(),
         openCount: { increment: 1 },
+        userAgent: userAgent || null,
+        ipAddress: ipAddress || null,
+        isBot: false,
       },
     });
   } catch (error) {

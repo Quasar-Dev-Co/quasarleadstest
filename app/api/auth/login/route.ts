@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
     // Check if user is verified
     if (!user.verified) {
       return NextResponse.json(
-        { error: 'Account not verified. Please contact admin for verification.' },
+        { error: 'Account not verified. Please check your email for the verification code, or sign up again to resend it.' },
         { status: 403 }
       );
     }

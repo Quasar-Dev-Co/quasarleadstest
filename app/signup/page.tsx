@@ -6,16 +6,19 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { 
-  Eye, 
-  EyeOff, 
-  Mail, 
-  Lock, 
+import {
+  Eye,
+  EyeOff,
+  Mail,
+  Lock,
   User,
   Building,
   Globe,
   Shield,
-  ArrowRight
+  ArrowRight,
+  KeyRound,
+  RefreshCw,
+  CheckCircle
 } from "lucide-react";
 import Image from "next/image";
 import { toast } from "sonner";
@@ -40,6 +43,13 @@ export default function SignupPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Email verification state
+  const [verificationStep, setVerificationStep] = useState(false);
+  const [verificationCode, setVerificationCode] = useState("");
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [isResending, setIsResending] = useState(false);
+  const [verifiedEmail, setVerifiedEmail] = useState("");
 
   const handleInputChange = (field: keyof SignupForm, value: string) => {
     setFormData(prev => ({
@@ -80,14 +90,16 @@ export default function SignupPage() {
 
     try {
       const result = await auth.signup(formData.username, formData.email, formData.password);
-      
+
       if (result.success) {
-        toast.success("Account created successfully! Please wait for admin verification before logging in.");
-        
-        // Redirect to login page after successful signup
-        setTimeout(() => {
-          router.push("/login");
-        }, 2000);
+        setVerifiedEmail(formData.email);
+        if (result.verificationEmailSent === false) {
+          toast.warning("Account created, but the verification email could not be sent. Click resend to try again.");
+        } else {
+          toast.success("Account created! A verification code has been sent to your email.");
+        }
+        // Transition to verification step
+        setVerificationStep(true);
       } else {
         toast.error(result.error || "Signup failed. Please try again.");
       }
@@ -96,6 +108,58 @@ export default function SignupPage() {
       toast.error("Signup failed. Please try again.");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Handle verification code submission
+  const handleVerify = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!verificationCode.trim()) {
+      toast.error("Please enter the verification code");
+      return;
+    }
+
+    if (verificationCode.trim().length !== 6) {
+      toast.error("Verification code must be 6 digits");
+      return;
+    }
+
+    setIsVerifying(true);
+    try {
+      const result = await auth.verifyEmail(verifiedEmail, verificationCode.trim());
+
+      if (result.success) {
+        toast.success(result.message || "Email verified successfully! You can now log in.");
+        setTimeout(() => {
+          router.push("/login");
+        }, 2000);
+      } else {
+        toast.error(result.error || "Verification failed. Please try again.");
+      }
+    } catch (error) {
+      toast.error("Verification failed. Please try again.");
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  // Handle resend verification code
+  const handleResendCode = async () => {
+    setIsResending(true);
+    try {
+      const result = await auth.resendVerificationCode(verifiedEmail);
+
+      if (result.success) {
+        toast.success(result.message || "A new verification code has been sent to your email.");
+        setVerificationCode("");
+      } else {
+        toast.error(result.error || "Failed to resend code. Please try again.");
+      }
+    } catch (error) {
+      toast.error("Failed to resend code. Please try again.");
+    } finally {
+      setIsResending(false);
     }
   };
 
@@ -129,6 +193,89 @@ export default function SignupPage() {
           </CardHeader>
           
           <CardContent className="space-y-6">
+            {/* Verification Code Step */}
+            {verificationStep ? (
+              <form onSubmit={handleVerify} className="space-y-5">
+                <div className="text-center space-y-2">
+                  <div className="inline-flex items-center justify-center w-14 h-14 bg-gradient-to-br from-green-500 to-emerald-600 rounded-full mb-2">
+                    <CheckCircle className="h-7 w-7 text-white" />
+                  </div>
+                  <h3 className="text-xl font-bold text-white">Verify Your Email</h3>
+                  <p className="text-slate-300 text-sm">
+                    We sent a 6-digit code to <span className="text-purple-400 font-medium">{verifiedEmail}</span>
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="verificationCode" className="text-white text-sm font-medium">
+                    Verification Code
+                  </Label>
+                  <div className="relative">
+                    <KeyRound className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+                    <Input
+                      id="verificationCode"
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={6}
+                      placeholder="Enter 6-digit code"
+                      value={verificationCode}
+                      onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, ""))}
+                      className="pl-10 text-center text-2xl tracking-[0.5em] bg-white/10 border-white/20 text-white placeholder:text-slate-400 placeholder:tracking-normal placeholder:text-sm focus:border-purple-400 focus:ring-purple-400"
+                      autoFocus
+                    />
+                  </div>
+                </div>
+
+                <Button
+                  type="submit"
+                  disabled={isVerifying || verificationCode.length !== 6}
+                  className="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-medium py-3 transition-all duration-200 transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isVerifying ? (
+                    <div className="flex items-center space-x-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      <span>Verifying...</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center space-x-2">
+                      <span>Verify Email</span>
+                      <CheckCircle className="h-4 w-4" />
+                    </div>
+                  )}
+                </Button>
+
+                <div className="flex items-center justify-between text-sm">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setVerificationStep(false);
+                      setVerificationCode("");
+                    }}
+                    className="text-slate-400 hover:text-white transition-colors"
+                  >
+                    ← Back to signup
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleResendCode}
+                    disabled={isResending}
+                    className="text-purple-400 hover:text-purple-300 transition-colors flex items-center gap-1 disabled:opacity-50"
+                  >
+                    {isResending ? (
+                      <>
+                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-purple-400"></div>
+                        <span>Sending...</span>
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="h-3 w-3" />
+                        <span>Resend code</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
               {/* Username Field */}
               <div className="space-y-2">
@@ -239,8 +386,10 @@ export default function SignupPage() {
                 )}
               </Button>
             </form>
+            )}
 
-            {/* Sign In Link */}
+            {/* Sign In Link - only show on signup step */}
+            {!verificationStep && (
             <div className="text-center">
               <Separator className="my-4 bg-white/20" />
               <p className="text-slate-300 text-sm">
@@ -253,6 +402,7 @@ export default function SignupPage() {
                 </button>
               </p>
             </div>
+            )}
           </CardContent>
         </Card>
       </div>
