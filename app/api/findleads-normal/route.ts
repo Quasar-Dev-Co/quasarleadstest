@@ -430,12 +430,23 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     for (const leadData of finalLeads) {
       try {
-        // Check if lead already exists using Prisma
+        // Check if lead already exists FOR THIS USER
+        // (different users can import the same lead — duplicate check is per-user)
         const existingLead = await prisma.lead.findFirst({
           where: {
-            OR: [
-              { email: leadData.email !== '' ? leadData.email : undefined },
-              { AND: [{ name: leadData.name }, { company: leadData.company }] }
+            AND: [
+              {
+                OR: [
+                  { assignedTo: finalUserId },
+                  { leadsCreatedBy: finalUserId }
+                ]
+              },
+              {
+                OR: [
+                  { email: leadData.email !== '' ? leadData.email : undefined },
+                  { AND: [{ name: leadData.name }, { company: leadData.company }] }
+                ]
+              }
             ]
           }
         });

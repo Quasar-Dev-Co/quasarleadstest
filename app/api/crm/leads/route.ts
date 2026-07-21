@@ -137,12 +137,18 @@ export async function POST(request: NextRequest) {
     }
 
     const existingLead = await prisma.lead.findFirst({
-      where: { email: { equals: email, mode: 'insensitive' } }
+      where: {
+        email: { equals: email, mode: 'insensitive' },
+        OR: [
+          { assignedTo: userId },
+          { leadsCreatedBy: userId }
+        ]
+      }
     });
 
     if (existingLead) {
       return NextResponse.json(
-        { success: false, error: 'A lead with this email already exists' },
+        { success: false, error: 'A lead with this email already exists in your account' },
         { status: 400 }
       );
     }

@@ -81,8 +81,21 @@ async function processNextJob() {
 
     for (const lead of enriched) {
       if (!lead.email) continue;
+      const jobUserId = job.userId || 'admin';
       const existing = await prisma.lead.findFirst({
-        where: { OR: [{ email: lead.email }, { company: lead.company }] }
+        where: {
+          AND: [
+            {
+              OR: [
+                { assignedTo: jobUserId },
+                { leadsCreatedBy: jobUserId }
+              ]
+            },
+            {
+              OR: [{ email: lead.email }, { company: lead.company }]
+            }
+          ]
+        }
       });
 
       if (!existing) {

@@ -192,12 +192,23 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           const enrichedLeads = await enrichLeadsWithOwners(leads, job.userId || 'quasar-admin');
 
           for (const lead of enrichedLeads) {
+            const jobUserId = job.userId || 'quasar-admin';
             const existing = await prisma.lead.findFirst({
               where: {
-                OR: [
-                  { email: lead.email },
-                  { AND: [{ name: lead.name }, { company: lead.company }] },
-                  ...(lead.website ? [{ website: lead.website }] : [])
+                AND: [
+                  {
+                    OR: [
+                      { assignedTo: jobUserId },
+                      { leadsCreatedBy: jobUserId }
+                    ]
+                  },
+                  {
+                    OR: [
+                      { email: lead.email },
+                      { AND: [{ name: lead.name }, { company: lead.company }] },
+                      ...(lead.website ? [{ website: lead.website }] : [])
+                    ]
+                  }
                 ]
               }
             });
