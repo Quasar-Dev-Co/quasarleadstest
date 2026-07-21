@@ -140,14 +140,25 @@ export async function POST(request: NextRequest) {
 		}
 
 		// 🔍 DUPLICATE PREVENTION: Check for existing leads BEFORE enrichment processing
-		console.log(`🔍 Checking for duplicates among ${temps.length} leads...`);
+		// Duplicate check is scoped to THIS USER — different users can import the same lead
+		console.log(`🔍 Checking for duplicates among ${temps.length} leads for user ${userId}...`);
 
 		const duplicateChecks = await Promise.all(
 			temps.map(async (temp) => {
 				const existing = await prisma.lead.findFirst({
 					where: {
-						company: { equals: temp.company, mode: 'insensitive' },
-						location: { equals: temp.location, mode: 'insensitive' }
+						AND: [
+							{
+								OR: [
+									{ assignedTo: userId },
+									{ leadsCreatedBy: userId }
+								]
+							},
+							{
+								company: { equals: temp.company, mode: 'insensitive' },
+								location: { equals: temp.location, mode: 'insensitive' }
+							}
+						]
 					}
 				});
 

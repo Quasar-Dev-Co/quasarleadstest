@@ -233,26 +233,32 @@ export async function POST(req: NextRequest) {
     const finalAuthInformation =
       Object.keys(authInformationWithExtras).length > 0 ? authInformationWithExtras : null;
 
-    // Check if lead with same email already exists
-    const existingLead = await prisma.lead.findFirst({
-      where: {
-        email: { equals: normalizedEmail, mode: 'insensitive' }
-      }
-    });
-    if (existingLead) {
-      return NextResponse.json(
-        { success: false, error: 'A lead with this email already exists' },
-        { status: 400 }
-      );
-    }
-
     // Get current user ID from request headers or session
+    // (moved before duplicate check so we can scope the check to this user)
     const userId = req.headers.get('x-user-id') || req.nextUrl.searchParams.get('userId');
-    
+
     if (!userId) {
       return NextResponse.json(
         { success: false, error: 'User ID is required' },
         { status: 401 }
+      );
+    }
+
+    // Check if lead with same email already exists FOR THIS USER
+    // (different users can have the same lead — duplicate check is per-user)
+    const existingLead = await prisma.lead.findFirst({
+      where: {
+        email: { equals: normalizedEmail, mode: 'insensitive' },
+        OR: [
+          { assignedTo: userId },
+          { leadsCreatedBy: userId }
+        ]
+      }
+    });
+    if (existingLead) {
+      return NextResponse.json(
+        { success: false, error: 'A lead with this email already exists in your account' },
+        { status: 400 }
       );
     }
 
