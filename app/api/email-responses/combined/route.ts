@@ -38,8 +38,24 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       take: limit
     });
 
+    // Fetch lead data (email history) for each unique leadId
+    const leadIds = [...new Set(emails.map(e => e.leadId).filter(Boolean))] as string[];
+    const leads = leadIds.length > 0 ? await prisma.lead.findMany({
+      where: { id: { in: leadIds } },
+      select: { id: true, email: true, name: true, company: true, emailHistory: true }
+    }) : [];
+    const leadMap = new Map(leads.map(l => [l.id, l]));
+
     const combinedData = emails.map(email => {
       const latestResponse = email.aiResponses?.[0] || null;
+      const lead = email.leadId ? leadMap.get(email.leadId) : null;
+      const emailHistory = (lead?.emailHistory as any[]) || [];
+      // Get the last sent email (the one this reply is responding to)
+      const sentEmails = emailHistory
+        .filter((e: any) => e?.status === 'sent' && e?.sentAt)
+        .sort((a: any, b: any) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime());
+      const lastSentEmail = sentEmails[0] || null;
+      const sentEmailContent = lastSentEmail?.emailContent || {};
 
       return {
         email: {
@@ -47,7 +63,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           leadId: email.leadId || '',
           leadName: email.leadName,
           leadEmail: email.leadEmail,
-          leadCompany: email.leadEmail.split('@')[1] || 'Unknown',
+          leadCompany: lead?.company || email.leadEmail.split('@')[1] || 'Unknown',
           subject: email.subject,
           content: email.content,
           htmlContent: email.htmlContent || '',
@@ -62,6 +78,17 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           isThirdReply: email.isThirdReply || false,
           metadata: email.metadata || {}
         },
+        // The original email we sent that triggered this reply
+        originalSentEmail: lastSentEmail ? {
+          subject: sentEmailContent?.subject || lastSentEmail?.subject || '',
+          content: sentEmailContent?.textContent || sentEmailContent?.text || '',
+          htmlContent: sentEmailContent?.htmlContent || '',
+          fromAddress: sentEmailContent?.from || '',
+          sentAt: lastSentEmail.sentAt,
+          stage: lastSentEmail?.stage || '',
+        } : null,
+        // Total sent emails count for this lead
+        totalSentEmails: sentEmails.length,
         aiResponse: latestResponse ? {
           id: latestResponse.id,
           incomingEmailId: latestResponse.incomingEmailId || '',
