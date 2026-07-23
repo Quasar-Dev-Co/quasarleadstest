@@ -259,17 +259,57 @@ export default function EmailResponsesNew() {
     try {
       setLoading(true);
       const authHeader = auth.getAuthHeader();
+      console.log('📧 Loading email data, authHeader present:', !!authHeader);
+
       const response = await fetch('/api/email-responses/combined', {
         headers: authHeader ? { Authorization: authHeader } : {}
       });
       const data = await response.json();
-      
+
+      console.log('📧 Combined API response:', { success: data.success, count: data.count, hasData: !!data.data });
+
       if (data.success) {
         setEmailData(data.data || []);
         console.log(`📧 Loaded ${data.count} emails with responses`);
       } else {
         console.error('API Error:', data.error);
-        toast.error(tf('failedToLoadEmailDataWithError', { error: data.error || t('unknownError') }));
+        // Fallback: try the incoming API directly
+        console.log('📧 Trying fallback: /api/email-responses/incoming');
+        const fallbackRes = await fetch('/api/email-responses/incoming', {
+          headers: authHeader ? { Authorization: authHeader } : {}
+        });
+        const fallbackData = await fallbackRes.json();
+        if (fallbackData.success && fallbackData.emails?.length > 0) {
+          // Convert incoming emails to combined format (no AI responses)
+          const fallbackEmailData = fallbackData.emails.map((email: any) => ({
+            email: {
+              id: email.id,
+              leadId: email.leadId || '',
+              leadName: email.leadName,
+              leadEmail: email.leadEmail,
+              leadCompany: email.leadEmail?.split('@')[1] || 'Unknown',
+              subject: email.subject,
+              content: email.content,
+              htmlContent: '',
+              status: email.status,
+              receivedAt: email.receivedAt,
+              respondedAt: email.respondedAt,
+              isReply: email.isReply || false,
+              isRecent: true,
+              threadId: email.threadId || '',
+              sentiment: email.sentiment || 'neutral',
+              conversationCount: email.conversationCount || 1,
+              isThirdReply: email.isThirdReply || false,
+              metadata: email.metadata || {}
+            },
+            aiResponse: null,
+            hasResponse: false
+          }));
+          setEmailData(fallbackEmailData);
+          console.log(`📧 Fallback: loaded ${fallbackEmailData.length} emails`);
+        } else {
+          toast.error(tf('failedToLoadEmailDataWithError', { error: data.error || t('unknownError') }));
+        }
       }
     } catch (error: any) {
       console.error('Error loading email data:', error);
@@ -638,7 +678,7 @@ export default function EmailResponsesNew() {
       {/* Main Content */}
       <Card className="bg-zinc-900/50 border-zinc-700">
         <CardContent className="p-6">
-          <Tabs defaultValue="new">
+          <Tabs defaultValue="all">
             <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="new">
                 {t('newEmailStat')} ({newEmailCount})
@@ -750,19 +790,33 @@ export default function EmailResponsesNew() {
             {/* All Tab */}
             <TabsContent value="all" className="mt-6">
               <div className="space-y-4">
-                {emailData.map((item) => (
-                  <EmailResponseCard
-                    key={item.email.id}
-                    item={item}
-                    onView={openPreview}
-                    onGenerate={generateResponse}
-                    onDirectSend={directSend}
-                    onDelete={deleteMessage}
-                    deletingEmailId={deletingEmailId}
-                    generating={generating}
-                    sending={sending}
-                  />
-                ))}
+                {loading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <RefreshCw className="h-8 w-8 animate-spin text-zinc-400" />
+                  </div>
+                ) : (
+                  <>
+                    {emailData.map((item) => (
+                      <EmailResponseCard
+                        key={item.email.id}
+                        item={item}
+                        onView={openPreview}
+                        onGenerate={generateResponse}
+                        onDirectSend={directSend}
+                        onDelete={deleteMessage}
+                        deletingEmailId={deletingEmailId}
+                        generating={generating}
+                        sending={sending}
+                      />
+                    ))}
+                    {emailData.length === 0 && (
+                      <div className="text-center py-12 text-zinc-400">
+                        <Mail className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                        <p>No emails found. Replies will appear here when leads respond to your outreach.</p>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             </TabsContent>
           </Tabs>

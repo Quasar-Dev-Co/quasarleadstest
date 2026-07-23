@@ -16,10 +16,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const authHeader = request.headers.get('authorization') || '';
     const bearerUserId = authHeader.startsWith('Bearer ') ? authHeader.substring(7).trim() : '';
 
+    console.log('📧 Combined API called, bearerUserId:', bearerUserId || '(none)');
+
     const where: any = {};
     if (bearerUserId) {
       where.userId = bearerUserId;
     }
+    // If no userId, return all emails (admin view) — this is the existing behavior
 
     // Fetch emails with their latest AI response
     const emails = await prisma.incomingEmail.findMany({
@@ -88,6 +91,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }
 
     const totalCount = await prisma.incomingEmail.count({ where });
+
+    console.log(`📧 Combined API: returning ${combinedData.length} emails (total: ${totalCount})`);
 
     return NextResponse.json({
       success: true,
