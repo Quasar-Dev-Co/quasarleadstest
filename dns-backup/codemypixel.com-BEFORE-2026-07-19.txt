@@ -1,0 +1,82 @@
+================================================================
+DNS BACKUP - codemypixel.com
+Captured: 2026-07-19 (before Brevo deliverability fixes)
+================================================================
+
+TXT  resend._domainkey.noreply  "p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQD2joL95pnn+cXmraih9h2MqTUMDoD3HGSB3+AUPXbafwduGeWz+Zu/Z5RACnp9zfUpDuBM/p53JYSHCNX4MTfZI4Ed+hiHn81cIgS97C21KiYwh0YL34+8CEeRjZL0C0ZaFitSYyyXPenF/vMhkwaBDKqyLORFOuEOHBDA6pl+bwIDAQAB"  TTL=300
+
+TXT  send.noreply  "v=spf1 include:amazonses.com ~all"  TTL=3600
+
+MX   send.noreply  10  feedback-smtp.ap-northeast-1.amazonses.com  TTL=3600
+
+MX   noreply  10  inbound-smtp.ap-northeast-1.amazonaws.com  TTL=3600
+
+CNAME  hostingermail-c._domainkey  hostingermail-c.dkim.mail.hostinger.com  TTL=300
+CNAME  hostingermail-b._domainkey  hostingermail-b.dkim.mail.hostinger.com  TTL=300
+CNAME  hostingermail-a._domainkey  hostingermail-a.dkim.mail.hostinger.com  TTL=300
+
+CNAME  brevo2._domainkey  b2.codemypixel-com.dkim.brevo.com  TTL=3600
+CNAME  brevo1._domainkey  b1.codemypixel-com.dkim.brevo.com  TTL=3600
+
+TXT  hostingermail1._domainkey  "v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA21Ze0/nA5PEbJyxs2pz35n906ZazNuRhTWWpNCg9LcfKevrKQy+rQ40GqeaIkq4VVMLvONuVO6579GJzdW/Rh09HXxLMDW7HK1sjNP8YUx+jm6i5SDZpWgSBPJyH5eN2RJzDIL1MmijT/3FTcnK9bxrSX8SW+W4r8jfy5fL9ompeAmNXB21DIxWCvnFX8PqnagRpd8zLDoNQBgDYNhpp3CvcPa+1/zBiP+935xGbFw1xkUd6e0ykfk0VivuYknDqS4yn88BelC2QLOMHWsuz7On06LfI8n2v0yRPAN8Ap7lUjSyRvwBu1ce8MA/vXRIqAb5v/fIyMqyRztM9D6/FdwIDAQAB"  TTL=3600
+
+CNAME  www  www.codemypixel.com.cdn.hstgr.net  TTL=300
+CNAME  mywallet  a0624e725b5b738c.vercel-dns-017.com  TTL=14400
+
+CNAME  brevo2._domainkey.connect  b2.connect-codemypixel-com.dkim.brevo.com  TTL=14400
+CNAME  brevo1._domainkey.connect  b1.connect-codemypixel-com.dkim.brevo.com  TTL=14400
+TXT   _dmarc.connect  "v=DMARC1; p=none; rua=mailto:rua@dmarc.brevo.com"  TTL=14400
+TXT   connect  "v=spf1 include:spf.improvmx.com ~all"  TTL=14400
+TXT   connect  "brevo-code:2c8e2bd4beaa32c33c204d67596ee79d"  TTL=14400
+MX    connect  10  mx1.improvmx.com  TTL=14400
+MX    connect  20  mx2.improvmx.com  TTL=14400
+
+CNAME  autodiscover  autodiscover.mail.hostinger.com  TTL=300
+
+CNAME  brevo2._domainkey.app  b2.app-codemypixel-com.dkim.brevo.com  TTL=14400
+CNAME  brevo1._domainkey.app  b1.app-codemypixel-com.dkim.brevo.com  TTL=14400
+TXT   _dmarc.app  "v=DMARC1; p=none; rua=mailto:rua@dmarc.brevo.com"  TTL=14400
+TXT   app  "v=spf1 include:spf.improvmx.com ~all"  TTL=14400
+TXT   app  "brevo-code:6099db31e5371ce15459d7095d38c99c"  TTL=14400
+MX    app  20  mx2.improvmx.com  TTL=14400
+MX    app  10  mx1.improvmx.com  TTL=14400
+
+CNAME  brevo2._domainkey.team  b2.team-codemypixel-com.dkim.brevo.com  TTL=14400
+CNAME  brevo1._domainkey.team  b1.team-codemypixel-com.dkim.brevo.com  TTL=14400
+TXT   _dmarc.team  "v=DMARC1; p=none; rua=mailto:rua@dmarc.brevo.com"  TTL=14400
+TXT   team  "v=spf1 include:spf.improvmx.com ~all"  TTL=14400
+TXT   team  "brevo-code:7c0bc9619c65fed5ba74f570cb0a77dd"  TTL=14400
+TXT   team  "brevo-code:2c8e2bd4beaa32c33c204d67596ee79d"  TTL=14400   [DUPLICATE - delete this one]
+MX    team  10  mx1.improvmx.com  TTL=14400
+MX    team  20  mx2.improvmx.com  TTL=14400
+
+CNAME  brevo2._domainkey.mail  b2.mail-codemypixel-com.dkim.brevo.com  TTL=14400
+CNAME  brevo1._domainkey.mail  b1.mail-codemypixel-com.dkim.brevo.com  TTL=14400
+
+CNAME  neel  41af30846bf2c013.vercel-dns-017.com  TTL=300
+
+TXT   _vercel  "vc-domain-verify=pixelreach.codemypixel.com,336a2b8aaf367ffdde4e"  TTL=14400
+TXT   _vercel  "vc-domain-verify=neel.codemypixel.com,c067db78b1c7f0f8419e"  TTL=14400
+
+AAAA  cmptask  2a02:4780:2b:2283:0:1b56:8776:5  TTL=1800
+A     cmptask  145.79.4.115  TTL=1800
+
+ALIAS  akash  akash.codemypixel.com.cdn.hstgr.net  TTL=300
+CNAME  pixelreach  3df22c7c57456bad.vercel-dns-017.com  TTL=14400
+CNAME  autoconfig  autoconfig.mail.hostinger.com  TTL=300
+
+TXT   _dmarc  "v=DMARC1; p=quarantine; pct=100; rua=mailto:admin@codemypixel.com,mailto:rua@dmarc.brevo.com; adkim=s; aspf=s"  TTL=300   [PROBLEM: strict alignment]
+
+ALIAS  @  codemypixel.com.cdn.hstgr.net  TTL=300
+
+TXT   @  "brevo-code:814bda306ec9718e370adf23234bdd29"  TTL=14400
+TXT   @  "brevo-code:b2a35ecb946aeb2cf6511cbe3e929164"  TTL=14400   [DUPLICATE brevo-code - delete]
+TXT   @  "v=spf1 include:_spf.mail.hostinger.com ~all"  TTL=14400   [PROBLEM: second SPF - merge]
+TXT   @  "v=spf1 include:spf.sendinblue.com mx ~all"  TTL=14400     [PROBLEM: second SPF - merge]
+
+MX    @  10  mx2.hostinger.com  TTL=14400
+MX    @  5   mx1.hostinger.com  TTL=14400
+
+================================================================
+END OF BACKUP
+================================================================

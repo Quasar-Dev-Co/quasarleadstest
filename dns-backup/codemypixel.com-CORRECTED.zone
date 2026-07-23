@@ -1,0 +1,105 @@
+;
+; codemypixel.com - DNS Zone (CORRECTED for Brevo deliverability)
+; Generated: 2026-07-19
+; Import this file in Hostinger hPanel: DNS / Nameservers -> Import
+;
+; IMPORTANT: Before importing, DELETE these records manually first
+;   - TXT @ "v=spf1 include:_spf.mail.hostinger.com ~all"
+;   - TXT @ "v=spf1 include:spf.sendinblue.com mx ~all"
+;   - TXT @ "brevo-code:b2a35ecb946aeb2cf6511cbe3e929164"
+;   - TXT team "brevo-code:2c8e2bd4beaa32c33c204d67596ee79d"
+; Or use overwrite mode if Hostinger supports it.
+;
+
+$ORIGIN codemypixel.com.
+$TTL 14400
+
+; --- Root A/ALIAS ---
+@                       IN ALIAS    codemypixel.com.cdn.hstgr.net.
+akash                   IN ALIAS    akash.codemypixel.com.cdn.hstgr.net.
+cmptask                 IN A        145.79.4.115
+cmptask                 IN AAAA     2a02:4780:2b:2283:0:1b56:8776:5
+
+; --- Root MX (Hostinger mail) ---
+@                       IN MX       5 mx1.hostinger.com.
+@                       IN MX       10 mx2.hostinger.com.
+
+; --- Root TXT: Brevo code (keep one) + merged SPF ---
+@                       IN TXT      "brevo-code:814bda306ec9718e370adf23234bdd29"
+@                       IN TXT      "v=spf1 include:_spf.mail.hostinger.com include:spf.sendinblue.com mx ~all"
+
+; --- Root DMARC (relaxed alignment) ---
+_dmarc                  IN TXT      "v=DMARC1; p=quarantine; pct=100; rua=mailto:admin@codemypixel.com,mailto:rua@dmarc.brevo.com; adkim=r; aspf=r"
+
+; --- Root DKIM (Brevo) ---
+brevo1._domainkey       IN CNAME    b1.codemypixel-com.dkim.brevo.com.
+brevo2._domainkey       IN CNAME    b2.codemypixel-com.dkim.brevo.com.
+
+; --- Root DKIM (Hostinger mail) ---
+hostingermail-a._domainkey IN CNAME hostingermail-a.dkim.mail.hostinger.com.
+hostingermail-b._domainkey IN CNAME hostingermail-b.dkim.mail.hostinger.com.
+hostingermail-c._domainkey IN CNAME hostingermail-c.dkim.mail.hostinger.com.
+hostingermail1._domainkey IN TXT    "v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA21Ze0/nA5PEbJyxs2pz35n906ZazNuRhTWWpNCg9LcfKevrKQy+rQ40GqeaIkq4VVMLvONuVO6579GJzdW/Rh09HXxLMDW7HK1sjNP8YUx+jm6i5SDZpWgSBPJyH5eN2RJzDIL1MmijT/3FTcnK9bxrSX8SW+W4r8jfy5fL9ompeAmNXB21DIxWCvnFX8PqnagRpd8zLDoNQBgDYNhpp3CvcPa+1/zBiP+935xGbFw1xkUd6e0ykfk0VivuYknDqS4yn88BelC2QLOMHWsuz7On06LfI8n2v0yRPAN8Ap7lUjSyRvwBu1ce8MA/vXRIqAb5v/fIyMqyRztM9D6/FdwIDAQAB"
+
+; --- Autodiscover / autoconfig (Hostinger mail) ---
+autodiscover            IN CNAME    autodiscover.mail.hostinger.com.
+autoconfig              IN CNAME    autoconfig.mail.hostinger.com.
+
+; --- www ---
+www                     IN CNAME    www.codemypixel.com.cdn.hstgr.net.
+
+; --- Vercel verifications ---
+_vercel                 IN TXT      "vc-domain-verify=pixelreach.codemypixel.com,336a2b8aaf367ffdde4e"
+_vercel                 IN TXT      "vc-domain-verify=neel.codemypixel.com,c067db78b1c7f0f8419e"
+
+; --- Vercel / other CNAMEs ---
+mywallet                IN CNAME    a0624e725b5b738c.vercel-dns-017.com.
+neel                    IN CNAME    41af30846bf2c013.vercel-dns-017.com.
+pixelreach              IN CNAME    3df22c7c57456bad.vercel-dns-017.com.
+
+; ============================================================
+; SUBDOMAIN: connect.codemypixel.com (Brevo + Improvmx)
+; ============================================================
+connect                 IN TXT      "brevo-code:2c8e2bd4beaa32c33c204d67596ee79d"
+connect                 IN TXT      "v=spf1 include:spf.sendinblue.com include:spf.improvmx.com ~all"
+connect                 IN MX       10 mx1.improvmx.com.
+connect                 IN MX       20 mx2.improvmx.com.
+brevo1._domainkey.connect IN CNAME  b1.connect-codemypixel-com.dkim.brevo.com.
+brevo2._domainkey.connect IN CNAME  b2.connect-codemypixel-com.dkim.brevo.com.
+_dmarc.connect          IN TXT      "v=DMARC1; p=none; rua=mailto:rua@dmarc.brevo.com"
+
+; ============================================================
+; SUBDOMAIN: app.codemypixel.com (Brevo + Improvmx)
+; ============================================================
+app                     IN TXT      "brevo-code:6099db31e5371ce15459d7095d38c99c"
+app                     IN TXT      "v=spf1 include:spf.sendinblue.com include:spf.improvmx.com ~all"
+app                     IN MX       10 mx1.improvmx.com.
+app                     IN MX       20 mx2.improvmx.com.
+brevo1._domainkey.app   IN CNAME    b1.app-codemypixel-com.dkim.brevo.com.
+brevo2._domainkey.app   IN CNAME    b2.app-codemypixel-com.dkim.brevo.com.
+_dmarc.app              IN TXT      "v=DMARC1; p=none; rua=mailto:rua@dmarc.brevo.com"
+
+; ============================================================
+; SUBDOMAIN: team.codemypixel.com (Brevo + Improvmx)
+; ============================================================
+team                    IN TXT      "brevo-code:7c0bc9619c65fed5ba74f570cb0a77dd"
+team                    IN TXT      "v=spf1 include:spf.sendinblue.com include:spf.improvmx.com ~all"
+team                    IN MX       10 mx1.improvmx.com.
+team                    IN MX       20 mx2.improvmx.com.
+brevo1._domainkey.team  IN CNAME    b1.team-codemypixel-com.dkim.brevo.com.
+brevo2._domainkey.team  IN CNAME    b2.team-codemypixel-com.dkim.brevo.com.
+_dmarc.team             IN TXT      "v=DMARC1; p=none; rua=mailto:rua@dmarc.brevo.com"
+
+; ============================================================
+; SUBDOMAIN: mail.codemypixel.com (Brevo DKIM only)
+; ============================================================
+brevo1._domainkey.mail  IN CNAME    b1.mail-codemypixel-com.dkim.brevo.com.
+brevo2._domainkey.mail  IN CNAME    b2.mail-codemypixel-com.dkim.brevo.com.
+
+; ============================================================
+; SUBDOMAIN: noreply.codemypixel.com (AWS SES - Resend)
+; ============================================================
+resend._domainkey.noreply IN TXT    "p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQD2joL95pnn+cXmraih9h2MqTUMDoD3HGSB3+AUPXbafwduGeWz+Zu/Z5RACnp9zfUpDuBM/p53JYSHCNX4MTfZI4Ed+hiHn81cIgS97C21KiYwh0YL34+8CEeRjZL0C0ZaFitSYyyXPenF/vMhkwaBDKqyLORFOuEOHBDA6pl+bwIDAQAB"
+send.noreply            IN TXT      "v=spf1 include:amazonses.com ~all"
+send.noreply            IN MX       10 feedback-smtp.ap-northeast-1.amazonses.com.
+noreply                 IN MX       10 inbound-smtp.ap-northeast-1.amazonaws.com.
