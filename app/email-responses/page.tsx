@@ -104,11 +104,41 @@ export default function EmailResponsesNew() {
   // Credentials gating
   const [credsLoading, setCredsLoading] = useState(true);
   const [missingCreds, setMissingCreds] = useState<string[]>([]);
+  // Required credentials — accept either legacy single-account fields OR
+  // multi-account arrays (SMTP_ACCOUNTS / IMAP_ACCOUNTS / OPENAI_ACCOUNTS).
   const requiredCreds = [
     'IMAP_HOST','IMAP_PORT','IMAP_USER','IMAP_PASSWORD',
     'SMTP_HOST','SMTP_PORT','SMTP_USER','SMTP_PASSWORD',
     'OPENAI_API_KEY'
   ];
+
+  // Check whether a credential group is satisfied, considering multi-account arrays.
+  const hasImapConfigured = (creds: any): boolean => {
+    if (creds.IMAP_HOST && creds.IMAP_PORT && creds.IMAP_USER && creds.IMAP_PASSWORD) return true;
+    if (Array.isArray(creds.IMAP_ACCOUNTS) && creds.IMAP_ACCOUNTS.some((a: any) =>
+      a?.IMAP_HOST && a?.IMAP_PORT && a?.IMAP_USER && a?.IMAP_PASSWORD
+    )) return true;
+    return false;
+  };
+  const hasSmtpConfigured = (creds: any): boolean => {
+    if (creds.SMTP_HOST && creds.SMTP_PORT && creds.SMTP_USER && creds.SMTP_PASSWORD) return true;
+    if (Array.isArray(creds.SMTP_ACCOUNTS) && creds.SMTP_ACCOUNTS.some((a: any) =>
+      a?.SMTP_HOST && a?.SMTP_PORT && a?.SMTP_USER && a?.SMTP_PASSWORD
+    )) return true;
+    return false;
+  };
+  const hasOpenAiConfigured = (creds: any): boolean => {
+    if (creds.OPENAI_API_KEY) return true;
+    if (Array.isArray(creds.OPENAI_ACCOUNTS) && creds.OPENAI_ACCOUNTS.some((k: any) => typeof k === 'string' && k.trim())) return true;
+    return false;
+  };
+  const computeMissingCreds = (creds: any): string[] => {
+    const missing: string[] = [];
+    if (!hasImapConfigured(creds)) missing.push('IMAP');
+    if (!hasSmtpConfigured(creds)) missing.push('SMTP');
+    if (!hasOpenAiConfigured(creds)) missing.push('OPENAI_API_KEY');
+    return missing;
+  };
 
   // Load AI settings
   const loadAiSettings = async () => {
@@ -170,17 +200,17 @@ export default function EmailResponsesNew() {
         });
         const data = await res.json();
         if (res.ok && data.success) {
-          const missing = requiredCreds.filter((k) => !data.credentials || !data.credentials[k]);
+          const missing = computeMissingCreds(data.credentials || {});
           setMissingCreds(missing);
         } else {
           console.error('API Error:', data.error);
           toast.error(tf('failedToLoadCredentialsWithError', { error: data.error || t('unknownError') }));
-          setMissingCreds(requiredCreds);
+          setMissingCreds(['IMAP','SMTP','OPENAI_API_KEY']);
         }
       } catch (error: any) {
         console.error('Error loading credentials:', error);
         toast.error(tf('failedToLoadCredentialsWithError', { error: error.message || t('networkError') }));
-        setMissingCreds(requiredCreds);
+        setMissingCreds(['IMAP','SMTP','OPENAI_API_KEY']);
       } finally {
         setCredsLoading(false);
       }

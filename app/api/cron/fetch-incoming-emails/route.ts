@@ -167,7 +167,7 @@ async function processUserEmails(user: any): Promise<{ userId: string; email: st
       console.log(`🔗 [IMAP ${i + 1}/${imapAccounts.length}] Connecting to ${label} for user: ${userEmail}...`);
 
       try {
-        const result = await processSingleImapAccount(userId, userEmail, imapConfig, i + 1);
+        const result = await processSingleImapAccount(userId, userEmail, imapConfig, i + 1, creds);
         totalProcessed += result.processed;
         totalNewEmails += result.newEmails;
       } catch (err: any) {
@@ -202,7 +202,8 @@ async function processSingleImapAccount(
   userId: string,
   userEmail: string,
   imapConfig: ImapAccountConfig,
-  accountIndex: number
+  accountIndex: number,
+  userCredentials: Record<string, any> = {}
 ): Promise<{ processed: number; newEmails: number }> {
   const label = `${imapConfig.host}:${imapConfig.port}`;
   let client: ImapFlow | null = null;
@@ -239,8 +240,11 @@ async function processSingleImapAccount(
     console.log(`📥 [IMAP ${accountIndex}] Scanning INBOX for ${userEmail} on ${label}...`);
 
     const now = new Date();
+    // Use a 30-minute lookback window to avoid missing replies when the cron
+    // runs late or IMAP fetch takes time. Deduplication via messageId in the
+    // incoming route prevents double-processing.
     const tenMinutesAgo = new Date();
-    tenMinutesAgo.setMinutes(tenMinutesAgo.getMinutes() - 10);
+    tenMinutesAgo.setMinutes(tenMinutesAgo.getMinutes() - 30);
 
     const totalMessages = typeof client.mailbox === 'object' && client.mailbox && 'exists' in client.mailbox
       ? Number((client.mailbox as any).exists || 0)
@@ -266,6 +270,25 @@ async function processSingleImapAccount(
       })();
 
       const ownDomains = ['quasarseo.nl', 'testqlagain.vercel.app'];
+      // Also include the current user's own sending domains (from SMTP accounts)
+      const smtpAccounts = userCredentials.SMTP_ACCOUNTS || [];
+      if (Array.isArray(smtpAccounts)) {
+        for (const acc of smtpAccounts) {
+          const smtpUser = String(acc?.SMTP_USER || acc?.user || '').trim();
+          if (smtpUser.includes('@')) {
+            const domain = smtpUser.split('@')[1]?.toLowerCase();
+            if (domain && !ownDomains.includes(domain)) ownDomains.push(domain);
+          }
+        }
+      }
+      const legacySmtpUser = String(userCredentials.SMTP_USER || '').trim();
+      if (legacySmtpUser.includes('@')) {
+        const domain = legacySmtpUser.split('@')[1]?.toLowerCase();
+        if (domain && !ownDomains.includes(domain)) ownDomains.push(domain);
+      }
+      const userEmailDomain = userEmail.split('@')[1]?.toLowerCase();
+      if (userEmailDomain && !ownDomains.includes(userEmailDomain)) ownDomains.push(userEmailDomain);
+
       const fromDomain = fromEmail.split('@')[1]?.toLowerCase();
       if (fromDomain && ownDomains.includes(fromDomain)) {
         continue;
@@ -334,7 +357,25 @@ async function processSingleImapAccount(
         threadId: threadId
       };
 
-      const saveResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/email-responses/incoming`, {
+      // Resolve the internal API URL — must be publicly reachable on Vercel.
+      // Skip localhost env values (they don't work on Vercel serverless).
+      const internalBaseUrl = (() => {
+        const candidates = [
+          process.env.NEXT_PUBLIC_APP_URL,
+          process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null,
+          process.env.APP_BASE_URL,
+        ];
+        for (const c of candidates) {
+          if (!c) continue;
+          const v = c.trim().replace(/\/$/, '');
+          if (!v) continue;
+          if (v.includes('localhost') || v.includes('127.0.0.1')) continue;
+          return v;
+        }
+        return 'http://localhost:3000';
+      })();
+
+      const saveResponse = await fetch(`${internalBaseUrl}/api/email-responses/incoming`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

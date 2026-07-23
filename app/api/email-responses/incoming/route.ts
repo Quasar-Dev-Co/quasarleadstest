@@ -70,6 +70,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     // Only accept replies that reference a messageId from an email we actually sent.
     // This prevents random inbox emails from being treated as lead replies.
+    // Fallback: if messageId matching fails, accept if the subject matches a sent subject
+    // (many SMTP providers rewrite messageIds, breaking strict matching).
     if (emailHistory.length > 0) {
       const sentMessageIds = new Set(
         emailHistory
@@ -84,8 +86,29 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         sentMessageIds.size > 0 &&
         refsList.some((ref) => sentMessageIds.has(ref));
 
+      // Fallback: subject-based matching. Strip "Re:" / "Fwd:" prefixes and compare
+      // against the subjects of emails we sent to this lead.
+      let matchesBySubject = false;
       if (!matchesSentEmail) {
-        console.log(`⏭️ Reply from ${leadEmail} does not reference any sent email messageId. Skipping.`);
+        const normalizeSubject = (s: string) =>
+          String(s || '').trim()
+            .replace(/^((re|fwd|fw|aw|wg):\s*)+/i, '')
+            .trim()
+            .toLowerCase();
+        const replySubjectNorm = normalizeSubject(subject);
+        if (replySubjectNorm) {
+          const sentSubjects = new Set(
+            emailHistory
+              .filter((e: any) => e?.status === 'sent')
+              .map((e: any) => normalizeSubject(e?.subject || ''))
+              .filter(Boolean)
+          );
+          matchesBySubject = sentSubjects.has(replySubjectNorm);
+        }
+      }
+
+      if (!matchesSentEmail && !matchesBySubject) {
+        console.log(`⏭️ Reply from ${leadEmail} does not reference any sent email messageId or subject. Skipping.`);
         return NextResponse.json({
           success: true,
           skipped: true,
