@@ -4056,7 +4056,7 @@ const LeadsCollection = () => {
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <Label className="text-sm font-medium mb-1.5 block">Email Template (Stage)</Label>
-                                    <Select value={directSendStage} onValueChange={updateDirectSendPreview}>
+                                    <Select value={directSendStage} onValueChange={(v) => updateDirectSendPreview(v)}>
                                         <SelectTrigger>
                                             <SelectValue placeholder="Select template..." />
                                         </SelectTrigger>
