@@ -240,7 +240,7 @@ const LeadsCollection = () => {
     const [testSendSending, setTestSendSending] = useState(false);
     // Direct send email state (from leads page — works for any lead)
     const [directSendLead, setDirectSendLead] = useState<Lead | null>(null);
-    const [directSendStage, setDirectSendStage] = useState('');
+    const [directSendStage, setDirectSendStage] = useState('__none__');
     const [directSendRecipient, setDirectSendRecipient] = useState<'lead' | 'company'>('lead');
     const [directSendSending, setDirectSendSending] = useState(false);
     const [directSendPreview, setDirectSendPreview] = useState<{ htmlContent: string; subject: string; leadEmail: string; leadName: string; leadCompany: string; templateStage: string } | null>(null);
@@ -1899,7 +1899,7 @@ const LeadsCollection = () => {
 
     const openDirectSendDialog = async (lead: Lead) => {
         setDirectSendLead(lead);
-        setDirectSendStage('');
+        setDirectSendStage('__none__');
         setDirectSendRecipient('lead');
         setDirectSendPreview(null);
         setDirectSendLoading(true);
@@ -1972,7 +1972,7 @@ const LeadsCollection = () => {
                 body: JSON.stringify({
                     leadId: directSendLead._id,
                     userId,
-                    stage: directSendStage || undefined,
+                    stage: directSendStage && directSendStage !== '__none__' ? directSendStage : undefined,
                     recipientOption: directSendRecipient,
                 }),
             });
@@ -4068,7 +4068,7 @@ const LeadsCollection = () => {
                                                     </SelectItem>
                                                 ))
                                             ) : (
-                                                <SelectItem value="" disabled>No templates found</SelectItem>
+                                                <SelectItem value="_none" disabled>No templates found</SelectItem>
                                             )}
                                         </SelectContent>
                                     </Select>
