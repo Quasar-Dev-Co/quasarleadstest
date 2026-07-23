@@ -238,6 +238,14 @@ const LeadsCollection = () => {
     const [testSendPreview, setTestSendPreview] = useState<{ htmlContent: string; subject: string; leadEmail: string; leadName: string; leadCompany: string; templateStage: string } | null>(null);
     const [testSendLoading, setTestSendLoading] = useState(false);
     const [testSendSending, setTestSendSending] = useState(false);
+    // Direct send email state (from leads page — works for any lead)
+    const [directSendLead, setDirectSendLead] = useState<Lead | null>(null);
+    const [directSendStage, setDirectSendStage] = useState('');
+    const [directSendRecipient, setDirectSendRecipient] = useState<'lead' | 'company'>('lead');
+    const [directSendSending, setDirectSendSending] = useState(false);
+    const [directSendPreview, setDirectSendPreview] = useState<{ htmlContent: string; subject: string; leadEmail: string; leadName: string; leadCompany: string; templateStage: string } | null>(null);
+    const [directSendLoading, setDirectSendLoading] = useState(false);
+    const [emailTemplates, setEmailTemplates] = useState<any[]>([]);
     // Outreach configuration controls
     const [selectedRecipient, setSelectedRecipient] = useState<'lead' | 'company'>('lead');
     const [selectedSenderIdentity, setSelectedSenderIdentity] = useState<'company' | 'author'>('company');
@@ -1887,6 +1895,104 @@ const LeadsCollection = () => {
         }
     };
 
+    // ===== Direct Send Email (from leads page — works for any lead) =====
+
+    const openDirectSendDialog = async (lead: Lead) => {
+        setDirectSendLead(lead);
+        setDirectSendStage('');
+        setDirectSendRecipient('lead');
+        setDirectSendPreview(null);
+        setDirectSendLoading(true);
+
+        try {
+            const userId = await auth.getCurrentUserId();
+            if (!userId) {
+                toast.error("You must be signed in to send emails");
+                setDirectSendLoading(false);
+                return;
+            }
+
+            // Fetch available email templates for this user
+            const templatesRes = await fetch(`/api/email-templates?userId=${userId}`);
+            const templatesData = await templatesRes.json();
+            if (templatesData.success && templatesData.templates) {
+                setEmailTemplates(templatesData.templates);
+            }
+
+            // Fetch preview for the first active template
+            const res = await fetch(`/api/leads/test-send?leadId=${lead._id}&userId=${userId}`, {
+                headers: { 'x-user-id': userId },
+            });
+            const data = await res.json();
+            if (data.success && data.preview) {
+                setDirectSendPreview(data.preview);
+                setDirectSendStage(data.preview.templateStage || '');
+            }
+        } catch (err) {
+            console.error("Direct send preview error:", err);
+        } finally {
+            setDirectSendLoading(false);
+        }
+    };
+
+    const updateDirectSendPreview = async (stage: string) => {
+        if (!directSendLead) return;
+        setDirectSendStage(stage);
+        setDirectSendLoading(true);
+        try {
+            const userId = await auth.getCurrentUserId();
+            if (!userId) return;
+            const res = await fetch(`/api/leads/test-send?leadId=${directSendLead._id}&userId=${userId}&stage=${stage}`, {
+                headers: { 'x-user-id': userId },
+            });
+            const data = await res.json();
+            if (data.success && data.preview) {
+                setDirectSendPreview(data.preview);
+            }
+        } catch (err) {
+            console.error("Preview update error:", err);
+        } finally {
+            setDirectSendLoading(false);
+        }
+    };
+
+    const sendDirectEmail = async () => {
+        if (!directSendLead) return;
+        setDirectSendSending(true);
+        try {
+            const userId = await auth.getCurrentUserId();
+            if (!userId) {
+                toast.error("You must be signed in to send emails");
+                return;
+            }
+
+            const res = await fetch('/api/leads/send-direct-email', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    leadId: directSendLead._id,
+                    userId,
+                    stage: directSendStage || undefined,
+                    recipientOption: directSendRecipient,
+                }),
+            });
+            const data = await res.json();
+            if (data.success) {
+                toast.success(`✅ Email sent to ${directSendRecipient === 'company' ? (directSendLead.authInformation as any)?.company_email || directSendLead.email : directSendLead.email}`);
+                setDirectSendLead(null);
+                setDirectSendPreview(null);
+                await fetchLeads(); // Refresh leads to show updated status
+            } else {
+                toast.error(data.error || "Failed to send email");
+            }
+        } catch (err: any) {
+            console.error("Direct send error:", err);
+            toast.error(err.message || "Failed to send email");
+        } finally {
+            setDirectSendSending(false);
+        }
+    };
+
     // Enrich leads with company owner information
     const enrichLeadsWithOwners = async () => {
         try {
@@ -2831,6 +2937,15 @@ const LeadsCollection = () => {
                                                             variant="ghost"
                                                             size="icon"
                                                             className="h-6 w-6"
+                                                            onClick={(e) => { e.stopPropagation(); openDirectSendDialog(lead); }}
+                                                            title="Send email to this lead"
+                                                        >
+                                                            <Mail className="h-3.5 w-3.5 text-blue-500" />
+                                                        </Button>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-6 w-6"
                                                             onClick={(e) => { e.stopPropagation(); openTestSendDialog(lead); }}
                                                             title="Send test email"
                                                         >
@@ -2978,6 +3093,15 @@ const LeadsCollection = () => {
                                                             variant="ghost"
                                                             size="icon"
                                                             className="h-6 w-6"
+                                                            onClick={(e) => { e.stopPropagation(); openDirectSendDialog(lead); }}
+                                                            title="Send email to this lead"
+                                                        >
+                                                            <Mail className="h-3.5 w-3.5 text-blue-500" />
+                                                        </Button>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-6 w-6"
                                                             onClick={(e) => { e.stopPropagation(); openTestSendDialog(lead); }}
                                                             title="Send test email"
                                                         >
@@ -3120,6 +3244,15 @@ const LeadsCollection = () => {
                                                             variant="ghost"
                                                             size="icon"
                                                             className="h-6 w-6"
+                                                            onClick={(e) => { e.stopPropagation(); openDirectSendDialog(lead); }}
+                                                            title="Send email to this lead"
+                                                        >
+                                                            <Mail className="h-3.5 w-3.5 text-blue-500" />
+                                                        </Button>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-6 w-6"
                                                             onClick={(e) => { e.stopPropagation(); openTestSendDialog(lead); }}
                                                             title="Send test email"
                                                         >
@@ -3253,6 +3386,15 @@ const LeadsCollection = () => {
                                                 <TableCell>
                                                     <div className="flex items-center gap-1">
                                                         <StatusBadge status={lead.status} />
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-6 w-6"
+                                                            onClick={(e) => { e.stopPropagation(); openDirectSendDialog(lead); }}
+                                                            title="Send email to this lead"
+                                                        >
+                                                            <Mail className="h-3.5 w-3.5 text-blue-500" />
+                                                        </Button>
                                                         <Button
                                                             variant="ghost"
                                                             size="icon"
@@ -3410,6 +3552,15 @@ const LeadsCollection = () => {
                                             <TableCell>
                                                 <div className="flex items-center gap-1">
                                                     <StatusBadge status={lead.status} />
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-6 w-6"
+                                                        onClick={(e) => { e.stopPropagation(); openDirectSendDialog(lead); }}
+                                                        title="Send email to this lead"
+                                                    >
+                                                        <Mail className="h-3.5 w-3.5 text-blue-500" />
+                                                    </Button>
                                                     <Button
                                                         variant="ghost"
                                                         size="icon"
@@ -3865,6 +4016,133 @@ const LeadsCollection = () => {
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+
+            {/* Direct Send Email Dialog — send email to any lead from leads page */}
+            <Dialog open={!!directSendLead} onOpenChange={(open) => { if (!directSendSending) { setDirectSendLead(null); setDirectSendPreview(null); } }}>
+                <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <Mail className="h-5 w-5 text-blue-500" />
+                            Send Email to Lead
+                        </DialogTitle>
+                        <DialogDescription>
+                            Send a personalized email directly to this lead. Works for new and existing leads.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {directSendLead && (
+                        <div className="space-y-4">
+                            {/* Lead info */}
+                            <div className="bg-muted/50 rounded-lg p-3 space-y-1">
+                                <div className="flex items-center gap-2 text-sm">
+                                    <span className="font-medium">{directSendLead.name}</span>
+                                    <span className="text-muted-foreground">·</span>
+                                    <span className="text-muted-foreground">{directSendLead.company}</span>
+                                </div>
+                                <div className="text-sm text-blue-600">
+                                    {directSendRecipient === 'company' && (directSendLead.authInformation as any)?.company_email
+                                        ? (directSendLead.authInformation as any).company_email
+                                        : directSendLead.email}
+                                </div>
+                                {directSendLead.emailHistory && directSendLead.emailHistory.length > 0 && (
+                                    <div className="text-xs text-amber-600 mt-1">
+                                        ⚠️ This lead already has {directSendLead.emailHistory.length} email(s) in history.
+                                        Status: {directSendLead.status}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Template selector */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <Label className="text-sm font-medium mb-1.5 block">Email Template (Stage)</Label>
+                                    <Select value={directSendStage} onValueChange={updateDirectSendPreview}>
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select template..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {emailTemplates.length > 0 ? (
+                                                emailTemplates.map((tpl: any) => (
+                                                    <SelectItem key={tpl.id} value={tpl.stage || tpl.id}>
+                                                        {tpl.stage ? tpl.stage.replace(/_/g, ' ') : 'Template'} {tpl.subject ? `— ${tpl.subject.substring(0, 40)}` : ''}
+                                                    </SelectItem>
+                                                ))
+                                            ) : (
+                                                <SelectItem value="" disabled>No templates found</SelectItem>
+                                            )}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div>
+                                    <Label className="text-sm font-medium mb-1.5 block">Send To</Label>
+                                    <Select value={directSendRecipient} onValueChange={(v: any) => setDirectSendRecipient(v)}>
+                                        <SelectTrigger>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="lead">Lead's email ({directSendLead.email})</SelectItem>
+                                            {(directSendLead.authInformation as any)?.company_email && (
+                                                <SelectItem value="company">Company email ({(directSendLead.authInformation as any).company_email})</SelectItem>
+                                            )}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+
+                            {/* Email preview */}
+                            {directSendLoading ? (
+                                <div className="flex items-center justify-center py-8">
+                                    <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
+                                    <span className="ml-2 text-muted-foreground">Generating email preview...</span>
+                                </div>
+                            ) : directSendPreview ? (
+                                <div className="border rounded-lg overflow-hidden">
+                                    <div className="bg-muted px-4 py-2 border-b">
+                                        <div className="text-sm font-medium">
+                                            Subject: {directSendPreview.subject}
+                                        </div>
+                                        <div className="text-xs text-muted-foreground mt-0.5">
+                                            Template stage: {directSendPreview.templateStage}
+                                        </div>
+                                    </div>
+                                    <div className="bg-white p-4 max-h-[300px] overflow-y-auto">
+                                        <div
+                                            className="text-sm text-gray-900 gmail-content"
+                                            dangerouslySetInnerHTML={{ __html: directSendPreview.htmlContent }}
+                                        />
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="text-center py-8 text-muted-foreground">
+                                    Select a template to preview the email
+                                </div>
+                            )}
+
+                            {/* Action buttons */}
+                            <div className="flex justify-end gap-2 pt-2">
+                                <Button
+                                    variant="outline"
+                                    onClick={() => { setDirectSendLead(null); setDirectSendPreview(null); }}
+                                    disabled={directSendSending}
+                                >
+                                    Cancel
+                                </Button>
+                                <Button
+                                    onClick={sendDirectEmail}
+                                    disabled={directSendSending || !directSendPreview}
+                                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                                >
+                                    {directSendSending ? (
+                                        <><RefreshCw className="h-4 w-4 mr-2 animate-spin" /> Sending...</>
+                                    ) : (
+                                        <><Send className="h-4 w-4 mr-2" /> Send Email</>
+                                    )}
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+                </DialogContent>
+            </Dialog>
 
             {/* Lead Details Dialog — shows all lead info from database */}
             <Dialog open={!!detailsLead} onOpenChange={() => setDetailsLead(null)}>
