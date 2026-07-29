@@ -1600,6 +1600,9 @@ const LeadsCollection = () => {
                 tags: [] as string[],
                 source: 'import',
                 notes: noteLines.length > 0 ? noteLines.join('\n') : '',
+                emailValidationStatus: 'valid',
+                emailValidationCheckedAt: new Date().toISOString(),
+                emailValidationDetails: { isValid: true, reason: 'marked_valid_no_scan', source: 'import' },
             };
         };
 
@@ -1659,9 +1662,9 @@ const LeadsCollection = () => {
             emailLastAttempt: lead.emailLastAttempt || null,
             emailStatus: lead.emailStatus || '',
             emailErrors: lead.emailErrors ?? null,
-            emailValidationStatus: lead.emailValidationStatus || 'notScanned',
-            emailValidationCheckedAt: lead.emailValidationCheckedAt || null,
-            emailValidationDetails: lead.emailValidationDetails ?? null,
+            emailValidationStatus: 'valid',
+            emailValidationCheckedAt: new Date().toISOString(),
+            emailValidationDetails: { isValid: true, reason: 'marked_valid_no_scan', source: 'import' },
             outreachRecipient: lead.outreachRecipient || 'lead',
             senderIdentity: lead.senderIdentity || 'company',
             emailHistory: lead.emailHistory ?? null,
