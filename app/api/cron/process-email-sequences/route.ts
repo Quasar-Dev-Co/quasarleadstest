@@ -69,7 +69,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
             data: {
               emailHistory: [
                 ...((lead.emailHistory as any[]) || []),
-                { stage: nextEmail.stage, sentAt: new Date(), messageId: emailResult.messageId, status: 'sent', manual: false, trackingId: emailResult.trackingId }
+                { stage: nextEmail.stage, subject: emailResult.subject || '', sentAt: new Date(), messageId: emailResult.messageId, status: 'sent', manual: false, trackingId: emailResult.trackingId }
               ] as any,
               emailSequenceStep: nextEmail.step,
               emailSequenceStage: nextEmail.stage,

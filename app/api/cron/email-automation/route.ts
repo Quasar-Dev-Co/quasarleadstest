@@ -436,6 +436,7 @@ async function sendEmailWithRetry(lead: any, stage: string, retryCount: number =
     const emailHistory = (lead.emailHistory as any[]) || [];
     emailHistory.push({
       stage: stage,
+      subject: subject,
       sentAt: new Date(),
       messageId: info.messageId,
       status: 'sent',

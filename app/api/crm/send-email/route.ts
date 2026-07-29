@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
         data: {
           emailHistory: [
             ...emailHistory,
-            { stage, sentAt: new Date(), messageId: emailResult.messageId, status: 'sent', manual, trackingId: emailResult.trackingId }
+            { stage, subject: emailResult.subject || '', sentAt: new Date(), messageId: emailResult.messageId, status: 'sent', manual, trackingId: emailResult.trackingId }
           ] as any,
           lastEmailedAt: new Date(),
           updatedAt: new Date()

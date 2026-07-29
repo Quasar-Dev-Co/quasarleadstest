@@ -82,7 +82,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         },
         // The original email we sent that triggered this reply
         originalSentEmail: lastSentEmail ? {
-          subject: sentEmailContent?.subject || lastSentEmail?.subject || '',
+          subject: sentEmailContent?.subject || lastSentEmail?.subject || lastSentEmail?.emailContent?.subject || '',
           content: sentEmailContent?.textContent || sentEmailContent?.text || '',
           htmlContent: sentEmailContent?.htmlContent || '',
           fromAddress: sentEmailContent?.from || '',

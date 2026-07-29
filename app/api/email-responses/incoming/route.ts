@@ -102,7 +102,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           const sentSubjects = new Set(
             emailHistory
               .filter((e: any) => e?.status === 'sent')
-              .map((e: any) => normalizeSubject(e?.subject || ''))
+              .map((e: any) => normalizeSubject(e?.subject || e?.emailContent?.subject || ''))
               .filter(Boolean)
           );
           matchesBySubject = sentSubjects.has(replySubjectNorm);

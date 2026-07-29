@@ -244,11 +244,11 @@ async function processSingleImapAccount(
     console.log(`📥 [IMAP ${accountIndex}] Scanning INBOX for ${userEmail} on ${label}...`);
 
     const now = new Date();
-    // Use a 30-minute lookback window to avoid missing replies when the cron
+    // Use a 24-hour lookback window to avoid missing replies when the cron
     // runs late or IMAP fetch takes time. Deduplication via messageId in the
     // incoming route prevents double-processing.
-    const tenMinutesAgo = new Date();
-    tenMinutesAgo.setMinutes(tenMinutesAgo.getMinutes() - 30);
+    const lookbackSince = new Date();
+    lookbackSince.setHours(lookbackSince.getHours() - 24);
 
     const totalMessages = typeof client.mailbox === 'object' && client.mailbox && 'exists' in client.mailbox
       ? Number((client.mailbox as any).exists || 0)
@@ -312,7 +312,7 @@ async function processSingleImapAccount(
       const rawDate: any = (msg as any)?.envelope?.date || parsed.date;
       if (!rawDate) continue;
       const emailDate = new Date(rawDate);
-      const isRecent = emailDate >= tenMinutesAgo && emailDate <= now;
+      const isRecent = emailDate >= lookbackSince && emailDate <= now;
 
       if (!isRecent) continue;
 

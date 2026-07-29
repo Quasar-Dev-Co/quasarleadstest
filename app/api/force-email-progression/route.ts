@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
         emailSequenceStage: nextStage,
         emailSequenceStep: EMAIL_STAGES.indexOf(nextStage) + 1,
         emailSequenceActive: !isLast,
-        emailHistory: [...emailHistory, { stage: nextStage, sentAt: new Date(), status: 'sent', messageId: result.messageId }]
+        emailHistory: [...emailHistory, { stage: nextStage, subject, sentAt: new Date(), status: 'sent', messageId: result.messageId }]
       }
     });
 

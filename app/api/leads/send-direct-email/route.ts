@@ -322,6 +322,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           ...emailHistory,
           {
             stage: sentStage,
+            subject: subject,
             sentAt: new Date(),
             messageId: emailResult.messageId || '',
             status: 'sent',

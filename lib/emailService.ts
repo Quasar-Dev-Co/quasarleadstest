@@ -360,7 +360,7 @@ class EmailService {
       companyLinkedin?: string | null;
     },
     userId?: string
-  ): Promise<{ success: boolean; messageId?: string; error?: string; trackingId?: string }> {
+  ): Promise<{ success: boolean; messageId?: string; error?: string; trackingId?: string; subject?: string }> {
 
     console.log(`🎯 Sending stage email for lead: ${leadData.name} - Stage: ${leadData.stage}`);
 
@@ -410,9 +410,11 @@ class EmailService {
     };
 
     if (userId) {
-      return await this.sendEmailForUser(userId, emailPayload);
+      const result = await this.sendEmailForUser(userId, emailPayload);
+      return { ...result, subject };
     }
-    return await this.sendEmail(emailPayload);
+    const result = await this.sendEmail(emailPayload);
+    return { ...result, subject };
   }
 
   // Test email connection
