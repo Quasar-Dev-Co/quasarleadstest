@@ -2079,17 +2079,39 @@ const LeadsCollection = () => {
         }
     };
 
-    // Email Validation Status Badge Component
-    const EmailValidationBadge = ({ status }: { status?: 'notScanned' | 'valid' | 'invalid' | 'checking' }) => {
-        if (!status || status === 'notScanned') {
-            return (
-                <div className="flex items-center gap-1.5 text-yellow-600" title="Email not validated yet">
-                    <BadgeAlert className="h-4 w-4" />
-                    <span className="text-xs font-medium">Not Scanned</span>
-                </div>
-            );
-        }
-        
+    // Email Validation Status Badge Component with manual mark option
+    const EmailValidationBadge = ({ status, leadId }: { status?: 'notScanned' | 'valid' | 'invalid' | 'checking'; leadId?: string }) => {
+        const [updating, setUpdating] = useState(false);
+        const [showActions, setShowActions] = useState(false);
+
+        const markStatus = async (newStatus: 'valid' | 'invalid') => {
+            if (!leadId || updating) return;
+            setUpdating(true);
+            try {
+                const authHeader = auth.getAuthHeader();
+                const res = await fetch('/api/leads/update-email-validation', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(authHeader ? { Authorization: authHeader } : {}),
+                    },
+                    body: JSON.stringify({ leadId, status: newStatus }),
+                });
+                const data = await res.json();
+                if (data.success) {
+                    toast.success(`Email marked as ${newStatus}`);
+                    fetchLeads();
+                } else {
+                    toast.error(data.error || 'Failed to update');
+                }
+            } catch (err: any) {
+                toast.error(err.message || 'Failed to update');
+            } finally {
+                setUpdating(false);
+                setShowActions(false);
+            }
+        };
+
         if (status === 'checking') {
             return (
                 <div className="flex items-center gap-1.5 text-blue-600" title="Validation in progress">
@@ -2098,26 +2120,52 @@ const LeadsCollection = () => {
                 </div>
             );
         }
-        
-        if (status === 'valid') {
-            return (
-                <div className="flex items-center gap-1.5 text-green-600" title="Email is valid and deliverable">
-                    <BadgeCheck className="h-4 w-4" />
-                    <span className="text-xs font-medium">Valid</span>
-                </div>
-            );
-        }
-        
-        if (status === 'invalid') {
-            return (
-                <div className="flex items-center gap-1.5 text-red-600" title="Email is invalid or undeliverable">
-                    <XCircle className="h-4 w-4" />
-                    <span className="text-xs font-medium">Invalid</span>
-                </div>
-            );
-        }
-        
-        return null;
+
+        return (
+            <div className="relative" onMouseEnter={() => setShowActions(true)} onMouseLeave={() => setShowActions(false)}>
+                {(!status || status === 'notScanned') && (
+                    <div className="flex items-center gap-1.5 text-yellow-600" title="Email not validated yet">
+                        <BadgeAlert className="h-4 w-4" />
+                        <span className="text-xs font-medium">Not Scanned</span>
+                    </div>
+                )}
+                {status === 'valid' && (
+                    <div className="flex items-center gap-1.5 text-green-600" title="Email is valid and deliverable">
+                        <BadgeCheck className="h-4 w-4" />
+                        <span className="text-xs font-medium">Valid</span>
+                    </div>
+                )}
+                {status === 'invalid' && (
+                    <div className="flex items-center gap-1.5 text-red-600" title="Email is invalid or undeliverable">
+                        <XCircle className="h-4 w-4" />
+                        <span className="text-xs font-medium">Invalid</span>
+                    </div>
+                )}
+                {showActions && leadId && !updating && (
+                    <div className="absolute z-20 top-full left-0 mt-1 flex gap-1 bg-white border border-gray-200 rounded-md shadow-lg p-1">
+                        <button
+                            onClick={(e) => { e.stopPropagation(); markStatus('valid'); }}
+                            className="flex items-center gap-1 px-2 py-1 text-xs text-green-600 hover:bg-green-50 rounded transition-colors"
+                            title="Mark as valid"
+                        >
+                            <BadgeCheck className="h-3 w-3" /> Valid
+                        </button>
+                        <button
+                            onClick={(e) => { e.stopPropagation(); markStatus('invalid'); }}
+                            className="flex items-center gap-1 px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded transition-colors"
+                            title="Mark as invalid"
+                        >
+                            <XCircle className="h-3 w-3" /> Invalid
+                        </button>
+                    </div>
+                )}
+                {updating && (
+                    <div className="absolute z-20 top-full left-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg p-1">
+                        <RefreshCw className="h-3 w-3 animate-spin text-gray-400" />
+                    </div>
+                )}
+            </div>
+        );
     };
 
     return (
@@ -2908,7 +2956,7 @@ const LeadsCollection = () => {
                                                     </button>
                                                 </TableCell>
                                                 <TableCell>
-                                                    <EmailValidationBadge status={lead.emailValidationStatus} />
+                                                    <EmailValidationBadge status={lead.emailValidationStatus} leadId={lead._id} />
                                                 </TableCell>
                                                 <TableCell>
                                                     {lead.rating ? (
@@ -4293,7 +4341,9 @@ const LeadsCollection = () => {
                                 <h4 className="font-semibold text-sm border-b pb-1">Email Validation</h4>
                                 <div className="grid grid-cols-3 gap-2">
                                     <div className="text-muted-foreground">Status</div>
-                                    <div className="col-span-2 break-words">{detailsLead.emailValidationStatus || '-'}</div>
+                                    <div className="col-span-2 break-words">
+                                        <EmailValidationBadge status={detailsLead.emailValidationStatus} leadId={detailsLead._id} />
+                                    </div>
                                     <div className="text-muted-foreground">Checked At</div>
                                     <div className="col-span-2 break-words">
                                         {detailsLead.emailValidationCheckedAt ? new Date(detailsLead.emailValidationCheckedAt).toLocaleString() : '-'}
