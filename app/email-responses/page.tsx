@@ -294,7 +294,8 @@ export default function EmailResponsesNew() {
       console.log('📧 Loading email data, authHeader present:', !!authHeader);
 
       const response = await fetch('/api/email-responses/combined', {
-        headers: authHeader ? { Authorization: authHeader } : {}
+        headers: authHeader ? { Authorization: authHeader } : {},
+        cache: 'no-store'
       });
       const data = await response.json();
 
@@ -308,7 +309,8 @@ export default function EmailResponsesNew() {
         // Fallback: try the incoming API directly
         console.log('📧 Trying fallback: /api/email-responses/incoming');
         const fallbackRes = await fetch('/api/email-responses/incoming', {
-          headers: authHeader ? { Authorization: authHeader } : {}
+          headers: authHeader ? { Authorization: authHeader } : {},
+          cache: 'no-store'
         });
         const fallbackData = await fallbackRes.json();
         if (fallbackData.success && fallbackData.emails?.length > 0) {
@@ -415,7 +417,15 @@ export default function EmailResponsesNew() {
       if (data.success) {
         toast.success(`✅ ${t('responseSent')}`);
         setShowPreviewDialog(false);
-        loadEmailData(); // Reload data
+        // Optimistic update: immediately mark the item as sent in local state
+        if (selectedItem?.aiResponse) {
+          setEmailData(prev => prev.map(item =>
+            item.aiResponse?.id === selectedItem.aiResponse!.id
+              ? { ...item, aiResponse: { ...item.aiResponse!, status: 'sent' as const, sentAt: new Date().toISOString() } }
+              : item
+          ));
+        }
+        loadEmailData(); // Reload data from server to confirm
       } else {
         toast.error(tf('failedWithError', { error: data.error }));
       }
@@ -526,7 +536,15 @@ export default function EmailResponsesNew() {
       
       if (data.success) {
         toast.success(`✅ ${t('responseSent')}`);
-        loadEmailData(); // Reload data
+        // Optimistic update: immediately mark the item as sent in local state
+        if (item.aiResponse) {
+          setEmailData(prev => prev.map(prevItem =>
+            prevItem.aiResponse?.id === item.aiResponse!.id
+              ? { ...prevItem, aiResponse: { ...prevItem.aiResponse!, status: 'sent' as const, sentAt: new Date().toISOString() } }
+              : prevItem
+          ));
+        }
+        loadEmailData(); // Reload data from server to confirm
       } else {
         toast.error(tf('failedWithError', { error: data.error }));
       }
@@ -818,6 +836,12 @@ export default function EmailResponsesNew() {
             {/* Sent Tab */}
             <TabsContent value="sent" className="mt-6">
               <div className="space-y-4">
+                {loading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <RefreshCw className="h-8 w-8 animate-spin text-zinc-400" />
+                  </div>
+                ) : (
+                <>
                 {emailData
                   .filter(item => item.aiResponse?.status === 'sent')
                   .map((item) => (
@@ -838,6 +862,8 @@ export default function EmailResponsesNew() {
                     <Mail className="h-16 w-16 text-zinc-400 mx-auto mb-4" />
                     <p className="text-zinc-400">{t('noSentEmails')}</p>
                   </div>
+                )}
+                </>
                 )}
               </div>
             </TabsContent>

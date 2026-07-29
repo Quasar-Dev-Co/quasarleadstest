@@ -7,6 +7,8 @@ import {
 } from '@/lib/api-key-rotation';
 import { createEmailTracking, injectTrackingPixel } from '@/lib/email-tracking';
 
+export const dynamic = 'force-dynamic';
+
 const EMAIL_RESPONSE_MODEL = 'gpt-5.4-nano';
 
 /**
