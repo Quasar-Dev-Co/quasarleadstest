@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
+import { shouldSkipEmail } from '@/lib/email-filters';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -65,42 +66,63 @@ function hasAnyImapConfigured(creds: Record<string, any>): boolean {
   return getConfiguredImapAccounts(creds).length > 0;
 }
 
-// Sender patterns that indicate automated/bounce/system emails, not real lead replies.
-const BLOCKED_SENDER_PATTERNS = [
-  'mailer-daemon',
-  'mailerdaemon',
-  'postmaster',
-  'no-reply',
-  'noreply',
-  'donotreply',
-  'do-not-reply',
-  'auto-reply',
-  'autoreply',
-  'bounces',
-  'bounce@',
-  'mailbot',
-  'bot@',
-  'notification@',
-  'alerts@',
-  'noreply@',
-  'mailer@',
-  'dmarc',
-  'feedback@',
-  'abuse@',
-  'spam@',
-];
-
-function isBlockedSender(email: string): boolean {
-  const lower = email.toLowerCase();
-  return BLOCKED_SENDER_PATTERNS.some((pattern) => lower.includes(pattern));
-}
-
 /**
  * Vercel Cron Job: Fetches incoming emails via IMAP for ALL users with IMAP credentials.
  * Reads from ALL configured IMAP accounts per user (multi-IMAP support).
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
   console.log('📬 Multi-User Cron Job: Starting incoming email fetch for all users...');
+
+  // Cleanup: Delete existing bounce/auto-reply incoming emails and revert polluted lead statuses
+  try {
+    const allIncomingEmails = await prisma.incomingEmail.findMany({
+      select: { id: true, leadEmail: true, subject: true, content: true, leadId: true }
+    });
+
+    const bounceEmailIds: string[] = [];
+    const bounceLeadIds = new Set<string>();
+
+    for (const email of allIncomingEmails) {
+      const skipCheck = shouldSkipEmail({
+        fromEmail: email.leadEmail,
+        subject: email.subject,
+        content: email.content,
+      });
+      if (skipCheck.skip) {
+        bounceEmailIds.push(email.id);
+        if (email.leadId) bounceLeadIds.add(email.leadId);
+      }
+    }
+
+    if (bounceEmailIds.length > 0) {
+      console.log(`🧹 Cleaning up ${bounceEmailIds.length} bounce/auto-reply emails from database...`);
+      await prisma.incomingEmail.deleteMany({
+        where: { id: { in: bounceEmailIds } }
+      });
+    }
+
+    // Revert lead statuses that were set to 'replied' by bounce emails
+    // Only revert if the lead has no real (non-bounce) incoming emails
+    if (bounceLeadIds.size > 0) {
+      const leadIds = Array.from(bounceLeadIds);
+      for (const leadId of leadIds) {
+        const remainingEmails = await prisma.incomingEmail.findMany({
+          where: { leadId },
+          select: { id: true }
+        });
+        // If no remaining incoming emails, revert status from 'replied' to 'new'
+        if (remainingEmails.length === 0) {
+          await prisma.lead.updateMany({
+            where: { id: leadId, status: 'replied' },
+            data: { status: 'new' }
+          });
+        }
+      }
+      console.log(`🧹 Reverted ${leadIds.length} leads from 'replied' to 'new' (were polluted by bounce emails).`);
+    }
+  } catch (cleanupError: any) {
+    console.error('⚠️ Cleanup step failed (non-fatal):', cleanupError.message);
+  }
 
   const allUsers = await prisma.user.findMany();
   const users = allUsers.filter(user => {
@@ -171,7 +193,7 @@ async function processUserEmails(user: any): Promise<{ userId: string; email: st
       console.log(`🔗 [IMAP ${i + 1}/${imapAccounts.length}] Connecting to ${label} for user: ${userEmail}...`);
 
       try {
-        const result = await processSingleImapAccount(userId, userEmail, imapConfig, i + 1, creds);
+        const result = await processSingleImapAccount(userId, userEmail, imapConfig, i + 1);
         totalProcessed += result.processed;
         totalNewEmails += result.newEmails;
       } catch (err: any) {
@@ -206,8 +228,7 @@ async function processSingleImapAccount(
   userId: string,
   userEmail: string,
   imapConfig: ImapAccountConfig,
-  accountIndex: number,
-  userCredentials: Record<string, any> = {}
+  accountIndex: number
 ): Promise<{ processed: number; newEmails: number }> {
   const label = `${imapConfig.host}:${imapConfig.port}`;
   let client: ImapFlow | null = null;
@@ -244,11 +265,8 @@ async function processSingleImapAccount(
     console.log(`📥 [IMAP ${accountIndex}] Scanning INBOX for ${userEmail} on ${label}...`);
 
     const now = new Date();
-    // Use a 24-hour lookback window to avoid missing replies when the cron
-    // runs late or IMAP fetch takes time. Deduplication via messageId in the
-    // incoming route prevents double-processing.
-    const lookbackSince = new Date();
-    lookbackSince.setHours(lookbackSince.getHours() - 24);
+    const tenMinutesAgo = new Date();
+    tenMinutesAgo.setMinutes(tenMinutesAgo.getMinutes() - 10);
 
     const totalMessages = typeof client.mailbox === 'object' && client.mailbox && 'exists' in client.mailbox
       ? Number((client.mailbox as any).exists || 0)
@@ -274,32 +292,19 @@ async function processSingleImapAccount(
       })();
 
       const ownDomains = ['quasarseo.nl', 'testqlagain.vercel.app'];
-      // Also include the current user's own sending domains (from SMTP accounts)
-      const smtpAccounts = userCredentials.SMTP_ACCOUNTS || [];
-      if (Array.isArray(smtpAccounts)) {
-        for (const acc of smtpAccounts) {
-          const smtpUser = String(acc?.SMTP_USER || acc?.user || '').trim();
-          if (smtpUser.includes('@')) {
-            const domain = smtpUser.split('@')[1]?.toLowerCase();
-            if (domain && !ownDomains.includes(domain)) ownDomains.push(domain);
-          }
-        }
-      }
-      const legacySmtpUser = String(userCredentials.SMTP_USER || '').trim();
-      if (legacySmtpUser.includes('@')) {
-        const domain = legacySmtpUser.split('@')[1]?.toLowerCase();
-        if (domain && !ownDomains.includes(domain)) ownDomains.push(domain);
-      }
-      const userEmailDomain = userEmail.split('@')[1]?.toLowerCase();
-      if (userEmailDomain && !ownDomains.includes(userEmailDomain)) ownDomains.push(userEmailDomain);
-
       const fromDomain = fromEmail.split('@')[1]?.toLowerCase();
       if (fromDomain && ownDomains.includes(fromDomain)) {
         continue;
       }
 
-      // Skip automated/bounce/system emails that aren't real lead replies.
-      if (isBlockedSender(fromEmail)) {
+      // Skip bounce/auto-reply/vacation emails before any processing
+      const skipCheck = shouldSkipEmail({
+        fromEmail,
+        subject: parsed.subject || '',
+        content: parsed.text || parsed.html || '',
+      });
+      if (skipCheck.skip) {
+        console.log(`🚫 Skipping ${skipCheck.reason} from ${fromEmail}: ${parsed.subject || '(no subject)'}`);
         continue;
       }
 
@@ -312,7 +317,7 @@ async function processSingleImapAccount(
       const rawDate: any = (msg as any)?.envelope?.date || parsed.date;
       if (!rawDate) continue;
       const emailDate = new Date(rawDate);
-      const isRecent = emailDate >= lookbackSince && emailDate <= now;
+      const isRecent = emailDate >= tenMinutesAgo && emailDate <= now;
 
       if (!isRecent) continue;
 
@@ -361,25 +366,7 @@ async function processSingleImapAccount(
         threadId: threadId
       };
 
-      // Resolve the internal API URL — must be publicly reachable on Vercel.
-      // Skip localhost env values (they don't work on Vercel serverless).
-      const internalBaseUrl = (() => {
-        const candidates = [
-          process.env.NEXT_PUBLIC_APP_URL,
-          process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null,
-          process.env.APP_BASE_URL,
-        ];
-        for (const c of candidates) {
-          if (!c) continue;
-          const v = c.trim().replace(/\/$/, '');
-          if (!v) continue;
-          if (v.includes('localhost') || v.includes('127.0.0.1')) continue;
-          return v;
-        }
-        return 'http://localhost:3000';
-      })();
-
-      const saveResponse = await fetch(`${internalBaseUrl}/api/email-responses/incoming`, {
+      const saveResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/email-responses/incoming`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

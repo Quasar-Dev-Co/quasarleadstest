@@ -19,12 +19,15 @@ async function generateAIResponse(email: any, aiSettings: any, apiKey: string): 
   }
 
   if (!aiSettings?.responsePrompt) {
-    // Use a sensible default prompt so drafts are still generated when the
-    // user hasn't configured a custom prompt. They can edit the draft in the UI.
-    console.log('⚠️ No responsePrompt configured — using default prompt');
+    return {
+      isDropped: true,
+      subject: '',
+      content: '',
+      reasoning: 'No AI prompt found in settings. Please configure the prompt in the frontend.'
+    };
   }
 
-  const basePrompt: string = aiSettings?.responsePrompt || `You are a friendly, professional sales assistant replying to a prospect who responded to a cold outreach email. Acknowledge their message, address any questions, and gently guide them toward scheduling a call. Keep the tone warm and human — no sales pressure. Be concise.`;
+  const basePrompt: string = aiSettings.responsePrompt;
   const extraDirectives = `
 You must follow the user's exact persona and tone. Never include placeholders like [your name], [phone], [email], etc. Do not add brackets around variables. Keep the response concise and human.
 `;
@@ -283,11 +286,9 @@ async function processUserEmailResponses(user: any): Promise<{ userId: string; e
       where: { userId: userIdString }
     });
 
-    if (!aiSettings) {
-      return { userId: userIdString, email: userEmail, processed: 0, sent: 0, errors: 0, message: 'AI settings not configured' };
+    if (!aiSettings || !aiSettings.isEnabled) {
+      return { userId: userIdString, email: userEmail, processed: 0, sent: 0, errors: 0, message: 'AI disabled or not configured' };
     }
-    // Note: we generate drafts even when autoReply is disabled, so the user
-    // can review them in the UI. autoReplyEnabled only controls auto-sending.
 
     const creds = (user.credentials as Record<string, any>) || {};
     const openAiKey = appendEnvKey(

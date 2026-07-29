@@ -35,6 +35,14 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/cron/email-workflow",
+      "schedule": "*/3 * * * *"
+    },
+    {
+      "path": "/api/cron/email-cleanup",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/email-validation",
       "schedule": "*/3 * * * *"
     },
