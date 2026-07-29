@@ -202,12 +202,20 @@ const LeadsCollection = () => {
     const [progressMessage, setProgressMessage] = useState("");
     const [collectedCount, setCollectedCount] = useState(0);
     
-    // Data state
-    const [newLeads, setNewLeads] = useState<Lead[]>([]);           // Leads without email automation
-    const [processingLeads, setProcessingLeads] = useState<Lead[]>([]);  // Leads in email automation
-    const [emailedLeads, setEmailedLeads] = useState<Lead[]>([]);    // Leads completed email sequence
-    const [repliedLeads, setRepliedLeads] = useState<Lead[]>([]);    // Leads who replied to our emails
+    // Data state — single paginated list
+    const [leads, setLeads] = useState<Lead[]>([]);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
+    const [totalLeads, setTotalLeads] = useState(0);
+    const [pageSize] = useState(50);
+    const [tabCounts, setTabCounts] = useState<Record<string, number>>({
+        'new-leads': 0,
+        'processing-leads': 0,
+        'emailed-leads': 0,
+        'replied-leads': 0,
+    });
     const [searchTerm, setSearchTerm] = useState("");
+    const [debouncedSearch, setDebouncedSearch] = useState("");
     const [activeTab, setActiveTab] = useState("new-leads");
     const [isViewAllOpen, setIsViewAllOpen] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
@@ -259,10 +267,29 @@ const LeadsCollection = () => {
     
     // Google Ads analysis is now integrated into main collection process
 
-    // Load leads from MongoDB on initial render
+    // Load leads from MongoDB on initial render and when tab/page/search changes
     useEffect(() => {
         fetchLeads();
         fetchJobQueue();
+    }, []);
+
+    // Refetch when tab, page, or debounced search changes
+    useEffect(() => {
+        fetchLeads();
+    }, [activeTab, currentPage, debouncedSearch]);
+
+    // Debounce search term
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedSearch(searchTerm);
+            setCurrentPage(1); // Reset to first page on new search
+        }, 400);
+        return () => clearTimeout(timer);
+    }, [searchTerm]);
+
+    // Fetch tab counts whenever leads might have changed
+    useEffect(() => {
+        fetchTabCounts();
     }, []);
 
     const normalizeLeadId = (lead: Lead): Lead => ({
@@ -273,11 +300,10 @@ const LeadsCollection = () => {
     const leadCountLabel = (count: number, singularKey: string, pluralKey: string) =>
         `${count} ${count === 1 ? String(t(singularKey as any)).toLowerCase() : String(t(pluralKey as any)).toLowerCase()}`;
 
-    // Fetch leads from the backend
+    // Fetch leads from the backend with pagination and server-side filtering
     const fetchLeads = async () => {
         setIsRefreshing(true);
         try {
-            // Get current user ID
             const userId = await auth.getCurrentUserId();
             
             if (!userId) {
@@ -286,43 +312,51 @@ const LeadsCollection = () => {
                 return;
             }
             
-            // Fetch leads for this specific user only
-            const allResponse = await fetch(`/api/leads?userId=${userId}`);
-            if (!allResponse.ok) {
+            const params = new URLSearchParams({
+                userId,
+                tab: activeTab,
+                page: String(currentPage),
+                pageSize: String(pageSize),
+            });
+            
+            if (debouncedSearch) {
+                params.set('search', debouncedSearch);
+            }
+            
+            const response = await fetch(`/api/leads?${params.toString()}`);
+            if (!response.ok) {
                 throw new Error('Failed to fetch leads');
             }
-            const allData = await allResponse.json();
-            const allLeads = (allData.leads || []).map(normalizeLeadId);
-
-            // Split leads by status and email automation
-            setRepliedLeads(allLeads.filter((l: Lead) => 
-                // Replied leads: status is 'replied'
-                l.status === 'replied'
-            ));
+            const data = await response.json();
+            const pageLeads = (data.leads || []).map(normalizeLeadId);
             
-            setNewLeads(allLeads.filter((l: Lead) => 
-                // New leads: no email automation started yet and not replied
-                l.status !== 'replied' &&
-                !l.emailSequenceActive && (!l.emailHistory || l.emailHistory.length === 0)
-            ));
+            setLeads(pageLeads);
+            setTotalLeads(data.total || 0);
+            setTotalPages(data.totalPages || 1);
             
-            setProcessingLeads(allLeads.filter((l: Lead) => 
-                // Processing: email automation is active and sequence not completed and not replied
-                l.status !== 'replied' &&
-                l.emailSequenceActive && 
-                (!l.emailSequenceStage || l.emailSequenceStage !== 'called_seven_times')
-            ));
-            
-            setEmailedLeads(allLeads.filter((l: Lead) => 
-                // Emailed: email sequence completed (reached stage 7) or automation inactive with email history and not replied
-                l.status !== 'replied' &&
-                ((!l.emailSequenceActive && l.emailHistory && l.emailHistory.length > 0) ||
-                (l.emailSequenceStage === 'called_seven_times'))
-            ));
+            // Refresh tab counts in background (non-blocking)
+            fetchTabCounts();
         } catch (error) {
             console.error('Error fetching leads:', error);
         } finally {
             setIsRefreshing(false);
+        }
+    };
+
+    // Fetch tab counts (lightweight — no lead data, just counts)
+    const fetchTabCounts = async () => {
+        try {
+            const userId = await auth.getCurrentUserId();
+            if (!userId) return;
+            
+            const response = await fetch(`/api/leads/tab-counts?userId=${userId}`);
+            if (!response.ok) return;
+            const data = await response.json();
+            if (data.success && data.counts) {
+                setTabCounts(data.counts);
+            }
+        } catch (error) {
+            console.error('Error fetching tab counts:', error);
         }
     };
 
@@ -440,7 +474,7 @@ const LeadsCollection = () => {
             const userId = await auth.getCurrentUserId();
             if (!userId) return;
 
-            const response = await fetch(`/api/leads?userId=${userId}`);
+            const response = await fetch(`/api/leads?userId=${userId}&limit=10000`);
             if (!response.ok) return;
             
             const data = await response.json();
@@ -763,35 +797,12 @@ const LeadsCollection = () => {
 
     // Removed high-value validation; only simple leads collection remains
 
-    // Filter leads based on search term
-    const getFilteredLeads = () => {
-        let leadsToFilter;
-        if (activeTab === "new-leads") {
-            leadsToFilter = newLeads;
-        } else if (activeTab === "processing-leads") {
-            leadsToFilter = processingLeads;
-        } else if (activeTab === "emailed-leads") {
-            leadsToFilter = emailedLeads;
-        } else if (activeTab === "replied-leads") {
-            leadsToFilter = repliedLeads;
-        } else {
-            leadsToFilter = activeTab === "new-leads" ? newLeads : processingLeads;
-        }
-        if (!searchTerm) return leadsToFilter;
-        return leadsToFilter.filter(lead =>
-            lead.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            lead.company.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (lead.companyOwner && lead.companyOwner.toLowerCase().includes(searchTerm.toLowerCase())) ||
-            lead.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            lead.email.toLowerCase().includes(searchTerm.toLowerCase())
-        );
-    };
-
-    const filteredLeads = getFilteredLeads();
+    // Leads are already filtered server-side by tab and search term
+    const filteredLeads = leads;
     const isRepliesTab = activeTab === 'replied-leads';
 
-    // For the dashboard
-    const allLeads = [...newLeads, ...processingLeads, ...emailedLeads, ...repliedLeads];
+    // For the dashboard and export — use current page leads
+    const allLeads = leads;
 
     // Google Ads analysis is now integrated into the main collection process
 
@@ -879,6 +890,27 @@ const LeadsCollection = () => {
     const [authInfoLead, setAuthInfoLead] = useState<Lead | null>(null);
     // Show Lead Details dialog for a lead
     const [detailsLead, setDetailsLead] = useState<Lead | null>(null);
+    // View All dialog leads (fetched separately, all leads)
+    const [viewAllLeads, setViewAllLeads] = useState<Lead[]>([]);
+    const [isLoadingViewAll, setIsLoadingViewAll] = useState(false);
+
+    const openViewAllDialog = async () => {
+        setIsViewAllOpen(true);
+        setIsLoadingViewAll(true);
+        try {
+            const userId = await auth.getCurrentUserId();
+            if (!userId) return;
+            const response = await fetch(`/api/leads?userId=${userId}&limit=10000`);
+            if (response.ok) {
+                const data = await response.json();
+                setViewAllLeads((data.leads || []).map(normalizeLeadId));
+            }
+        } catch (error) {
+            console.error('Error fetching all leads for view dialog:', error);
+        } finally {
+            setIsLoadingViewAll(false);
+        }
+    };
 
     // CRM Selection functions
     const toggleSelectionMode = () => {
@@ -918,8 +950,8 @@ const LeadsCollection = () => {
         setIsAddingToCRM(true);
 
         try {
-            // Get leads from new leads tab (only new leads can start automation)
-            const leadsToAdd = newLeads.filter(lead => selectedLeads.has(lead._id));
+            // Get leads from current page (only new leads can start automation)
+            const leadsToAdd = leads.filter(lead => selectedLeads.has(lead._id));
             
             let successCount = 0;
             let errorCount = 0;
@@ -1158,16 +1190,19 @@ const LeadsCollection = () => {
     // Export functions
     const exportLeads = async (format: 'csv' | 'pdf' | 'json') => {
         try {
-            const allLeads = [...newLeads, ...processingLeads, ...emailedLeads, ...repliedLeads]
-                .filter((lead) => (lead._id || lead.id))
-                .reduce((acc: Lead[], lead) => {
-                    const leadId = lead._id || lead.id;
-                    if (!leadId || acc.some((item) => (item._id || item.id) === leadId)) {
-                        return acc;
-                    }
-                    acc.push(lead);
-                    return acc;
-                }, []);
+            // Fetch all leads for export (use legacy limit param to get all)
+            const userId = await auth.getCurrentUserId();
+            if (!userId) {
+                toast.error('You must be signed in to export leads');
+                return;
+            }
+            const exportResponse = await fetch(`/api/leads?userId=${userId}&limit=10000`);
+            if (!exportResponse.ok) {
+                toast.error('Failed to fetch leads for export');
+                return;
+            }
+            const exportData = await exportResponse.json();
+            const allLeads = (exportData.leads || []).map(normalizeLeadId);
 
             if (allLeads.length === 0) {
                 toast.error("No leads to export");
@@ -1229,7 +1264,7 @@ const LeadsCollection = () => {
                     'leadsCreatedBy',
                 ];
 
-                const csvRows = allLeads.map(lead => [
+                const csvRows = allLeads.map((lead: Lead) => [
                     lead._id || lead.id || '',
                     lead.name || '',
                     lead.company || '',
@@ -1278,7 +1313,7 @@ const LeadsCollection = () => {
                 ]);
 
                 const content = [headers, ...csvRows]
-                    .map(row => row.map(field => csvEscape(field)).join(','))
+                    .map(row => row.map((field: any) => csvEscape(field)).join(','))
                     .join('\n');
                 const filename = `leads-export-${new Date().toISOString().split('T')[0]}.csv`;
                 const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
@@ -2555,7 +2590,7 @@ const LeadsCollection = () => {
                     <Button 
                         variant="outline" 
                         className="flex items-center gap-1"
-                        onClick={() => setIsViewAllOpen(true)}
+                        onClick={openViewAllDialog}
                         title={String(t("viewAllLeads"))}
                     >
                         <span>{t("viewAll")}</span>
@@ -2821,38 +2856,38 @@ const LeadsCollection = () => {
                 <SearchJobsProgress />
             </div>
 
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6">
+            <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setCurrentPage(1); }} className="mt-6">
                 <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-4 mb-4">
                     <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 lg:w-auto">
                         <TabsTrigger value="new-leads" className="text-xs sm:text-sm">
                             <span className="truncate">{t("newLeads")}</span>
-                            {newLeads.length > 0 && (
+                            {tabCounts['new-leads'] > 0 && (
                                 <span className="ml-1 sm:ml-2 px-1 sm:px-2 py-0.5 text-xs bg-fuchsia-600 text-white rounded-full">
-                                    {newLeads.length}
+                                    {tabCounts['new-leads']}
                                 </span>
                             )}
                         </TabsTrigger>
                         <TabsTrigger value="processing-leads" className="text-xs sm:text-sm">
                             <span className="truncate">{t("processing")}</span>
-                            {processingLeads.length > 0 && (
+                            {tabCounts['processing-leads'] > 0 && (
                                 <span className="ml-1 sm:ml-2 px-1 sm:px-2 py-0.5 text-xs bg-fuchsia-600 text-white rounded-full">
-                                    {processingLeads.length}
+                                    {tabCounts['processing-leads']}
                                 </span>
                             )}
                         </TabsTrigger>
                         <TabsTrigger value="emailed-leads" className="text-xs sm:text-sm">
                             <span className="truncate">{t("emailed")}</span>
-                            {emailedLeads.length > 0 && (
+                            {tabCounts['emailed-leads'] > 0 && (
                                 <span className="ml-1 sm:ml-2 px-1 sm:px-2 py-0.5 text-xs bg-fuchsia-600 text-white rounded-full">
-                                    {emailedLeads.length}
+                                    {tabCounts['emailed-leads']}
                                 </span>
                             )}
                         </TabsTrigger>
                         <TabsTrigger value="replied-leads" className="text-xs sm:text-sm">
                             <span className="truncate">💬 Replies</span>
-                            {repliedLeads.length > 0 && (
+                            {tabCounts['replied-leads'] > 0 && (
                                 <span className="ml-1 sm:ml-2 px-1 sm:px-2 py-0.5 text-xs bg-green-600 text-white rounded-full">
-                                    {repliedLeads.length}
+                                    {tabCounts['replied-leads']}
                                 </span>
                             )}
                         </TabsTrigger>
@@ -3484,6 +3519,36 @@ const LeadsCollection = () => {
                 {/* Removed High Value Leads content */}
             </Tabs>
 
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+                <div className="flex items-center justify-between mt-4 px-2">
+                    <div className="text-sm text-muted-foreground">
+                        Showing {((currentPage - 1) * pageSize) + 1}–{Math.min(currentPage * pageSize, totalLeads)} of {totalLeads} leads
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                            disabled={currentPage <= 1 || isRefreshing}
+                        >
+                            Previous
+                        </Button>
+                        <span className="text-sm font-medium px-2">
+                            Page {currentPage} of {totalPages}
+                        </span>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                            disabled={currentPage >= totalPages || isRefreshing}
+                        >
+                            Next
+                        </Button>
+                    </div>
+                </div>
+            )}
+
             {/* View All Leads Dialog */}
             <Dialog open={isViewAllOpen} onOpenChange={setIsViewAllOpen}>
                 <DialogContent className="sm:max-w-6xl max-h-[90vh] flex flex-col">
@@ -3501,12 +3566,12 @@ const LeadsCollection = () => {
                                         <TableHead className="w-[50px]">
                                             <input
                                                 type="checkbox"
-                                                checked={allLeads.length > 0 && allLeads.every(lead => selectedLeads.has(lead._id))}
+                                                checked={viewAllLeads.length > 0 && viewAllLeads.every(lead => selectedLeads.has(lead._id))}
                                                 onChange={() => {
-                                                    if (allLeads.every(lead => selectedLeads.has(lead._id))) {
+                                                    if (viewAllLeads.every(lead => selectedLeads.has(lead._id))) {
                                                         setSelectedLeads(new Set());
                                                     } else {
-                                                        setSelectedLeads(new Set(allLeads.map(lead => lead._id)));
+                                                        setSelectedLeads(new Set(viewAllLeads.map(lead => lead._id)));
                                                     }
                                                 }}
                                                 className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
@@ -3525,8 +3590,17 @@ const LeadsCollection = () => {
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {allLeads.length > 0 ? (
-                                    allLeads.map(lead => (
+                                {isLoadingViewAll ? (
+                                    <TableRow>
+                                        <TableCell colSpan={isSelectionMode ? 12 : 11} className="text-center py-6 text-muted-foreground">
+                                            <div className="flex items-center justify-center gap-2">
+                                                <RotateCw className="h-4 w-4 animate-spin" />
+                                                <span>Loading all leads...</span>
+                                            </div>
+                                        </TableCell>
+                                    </TableRow>
+                                ) : viewAllLeads.length > 0 ? (
+                                    viewAllLeads.map(lead => (
                                         <TableRow key={lead._id} className={lead.googleAds && (lead.organicRanking === undefined || lead.organicRanking > 10) ? "bg-amber-50/50" : ""}>
                                             {isSelectionMode && (
                                                 <TableCell>
@@ -3637,12 +3711,7 @@ const LeadsCollection = () => {
                                 ) : (
                                     <TableRow>
                                         <TableCell colSpan={isSelectionMode ? 12 : 11} className="text-center py-6 text-muted-foreground">
-                                            {isRefreshing ? (
-                                                <div className="flex items-center justify-center gap-2">
-                                                    <RotateCw className="h-4 w-4 animate-spin" />
-                                                    <span>{t("refreshingLeads")}</span>
-                                                </div>
-                                            ) : t("noLeadsFound")}
+                                            {t("noLeadsFound")}
                                         </TableCell>
                                     </TableRow>
                                 )}

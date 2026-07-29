@@ -3,7 +3,17 @@ import { prisma } from '@/lib/prisma';
 import { getBatchOpenStats } from '@/lib/email-tracking';
 
 /**
- * GET handler for retrieving leads with filtering
+ * GET handler for retrieving leads with filtering, pagination, and server-side tab filtering
+ *
+ * Query params:
+ *   userId    — required, scopes leads to this user
+ *   tab       — 'new-leads' | 'processing-leads' | 'emailed-leads' | 'replied-leads'
+ *   status    — comma-separated status filter (legacy, still supported)
+ *   highValue — 'true' to filter high-value leads
+ *   search    — search term for name, company, email, companyOwner, location
+ *   page      — 1-based page number (default 1)
+ *   pageSize  — items per page (default 50, max 200)
+ *   limit     — legacy, if present overrides pageSize (no pagination)
  */
 export async function GET(req: NextRequest) {
   try {
@@ -12,14 +22,19 @@ export async function GET(req: NextRequest) {
     const highValue = url.searchParams.get('highValue');
     const limit = url.searchParams.get('limit');
     const userId = url.searchParams.get('userId');
-    
+    const tab = url.searchParams.get('tab');
+    const search = url.searchParams.get('search')?.trim() || '';
+    const page = Math.max(1, parseInt(url.searchParams.get('page') || '1'));
+    const pageSizeParam = parseInt(url.searchParams.get('pageSize') || '50');
+    const pageSize = Math.min(Math.max(1, pageSizeParam || 50), 200);
+
     if (!userId) {
       return NextResponse.json(
         { success: false, error: 'User ID is required to view leads' },
         { status: 401 }
       );
     }
-    
+
     // Build Prisma where clause
     const where: any = {
       OR: [
@@ -27,11 +42,41 @@ export async function GET(req: NextRequest) {
         { leadsCreatedBy: userId }
       ]
     };
-    
-    if (status) {
+
+    // Tab-based server-side filtering (mirrors the old client-side logic)
+    if (tab) {
+      if (tab === 'replied-leads') {
+        where.status = 'replied';
+      } else if (tab === 'new-leads') {
+        where.status = { not: 'replied' };
+        where.emailSequenceActive = { not: true };
+        where.OR = [
+          { assignedTo: userId, emailHistory: { equals: [] as any } },
+          { assignedTo: userId, emailHistory: { equals: null as any } },
+          { leadsCreatedBy: userId, emailHistory: { equals: [] as any } },
+          { leadsCreatedBy: userId, emailHistory: { equals: null as any } },
+        ];
+      } else if (tab === 'processing-leads') {
+        where.status = { not: 'replied' };
+        where.emailSequenceActive = true;
+        where.emailSequenceStage = { not: 'called_seven_times' };
+      } else if (tab === 'emailed-leads') {
+        where.status = { not: 'replied' };
+        where.OR = [
+          {
+            emailSequenceActive: { not: true },
+            NOT: { emailHistory: { equals: [] as any } },
+          },
+          { emailSequenceStage: 'called_seven_times' },
+        ];
+      }
+    }
+
+    // Legacy status filter ( overrides tab-based status if both provided )
+    if (status && !tab) {
       where.status = { in: status.split(',') };
     }
-    
+
     if (highValue === 'true') {
       where.AND = [
         {
@@ -48,14 +93,118 @@ export async function GET(req: NextRequest) {
         }
       ];
     }
-    
-    const leads = await prisma.lead.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      take: limit ? parseInt(limit) : undefined
-    });
 
-    // Batch fetch email open tracking stats for all leads
+    // Server-side search
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { company: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+        { companyOwner: { contains: search, mode: 'insensitive' } },
+        { location: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    // Field selection — only fetch what the table needs
+    const select = {
+      id: true,
+      name: true,
+      company: true,
+      companyOwner: true,
+      location: true,
+      email: true,
+      website: true,
+      linkedinProfile: true,
+      status: true,
+      stage: true,
+      googleAds: true,
+      googleAdsChecked: true,
+      organicRanking: true,
+      isHighValue: true,
+      rating: true,
+      reviews: true,
+      source: true,
+      industry: true,
+      searchService: true,
+      searchLocation: true,
+      address: true,
+      phone: true,
+      notes: true,
+      tags: true,
+      createdAt: true,
+      updatedAt: true,
+      assignedTo: true,
+      leadsCreatedBy: true,
+      authInformation: true,
+      emailValidationStatus: true,
+      emailValidationCheckedAt: true,
+      emailValidationDetails: true,
+      emailSequenceActive: true,
+      emailSequenceStage: true,
+      emailSequenceStep: true,
+      emailStatus: true,
+      emailRetryCount: true,
+      emailFailureCount: true,
+      emailLastAttempt: true,
+      emailErrors: true,
+      emailHistory: true,
+      nextScheduledEmail: true,
+      emailSequenceStartDate: true,
+      emailStoppedReason: true,
+      emailAutomationEnabled: true,
+      outreachRecipient: true,
+      senderIdentity: true,
+      lastContactedAt: true,
+      lastEmailedAt: true,
+      dealValue: true,
+      probability: true,
+      budget: true,
+      closedDate: true,
+      closedReason: true,
+      lossReason: true,
+      lossDescription: true,
+      latitude: true,
+      longitude: true,
+    };
+
+    // If legacy limit is provided, return all matching (no pagination)
+    if (limit) {
+      const leads = await prisma.lead.findMany({
+        where,
+        select,
+        orderBy: { createdAt: 'desc' },
+        take: parseInt(limit)
+      });
+
+      const leadIds = leads.map((l: any) => l.id).filter(Boolean);
+      const openStats = await getBatchOpenStats(leadIds);
+
+      const leadsWithOpenStats = leads.map((lead: any) => ({
+        ...lead,
+        emailOpenStats: openStats[lead.id] || { totalSent: 0, totalOpened: 0, openedStages: [], lastOpenedAt: null },
+      }));
+
+      return NextResponse.json({ 
+        success: true,
+        leads: leadsWithOpenStats,
+        total: leadsWithOpenStats.length,
+        hasMore: false
+      });
+    }
+
+    // Paginated query — get total count and page data in parallel
+    const [total, leads] = await Promise.all([
+      prisma.lead.count({ where }),
+      prisma.lead.findMany({
+        where,
+        select,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ]);
+
+    // Batch fetch email open tracking stats for this page's leads only
     const leadIds = leads.map((l: any) => l.id).filter(Boolean);
     const openStats = await getBatchOpenStats(leadIds);
 
@@ -65,11 +214,16 @@ export async function GET(req: NextRequest) {
       emailOpenStats: openStats[lead.id] || { totalSent: 0, totalOpened: 0, openedStages: [], lastOpenedAt: null },
     }));
 
+    const totalPages = Math.ceil(total / pageSize);
+
     return NextResponse.json({ 
       success: true,
       leads: leadsWithOpenStats,
-      total: leadsWithOpenStats.length,
-      hasMore: false
+      total,
+      page,
+      pageSize,
+      totalPages,
+      hasMore: page < totalPages,
     });
   } catch (error) {
     console.error('Error fetching leads:', error);
