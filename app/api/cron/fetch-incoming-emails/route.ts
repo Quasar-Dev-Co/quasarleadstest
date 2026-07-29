@@ -3,6 +3,10 @@ import { prisma } from '@/lib/prisma';
 import { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+export const maxDuration = 300;
+
 type ImapAccountConfig = {
   host: string;
   port: number;

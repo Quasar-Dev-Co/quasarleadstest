@@ -5,6 +5,10 @@ import { appendEnvKey, getApiKeysFromCredentials } from '@/lib/api-key-rotation'
 import { selectSmtpAccountWithEnvFallback, incrementSmtpSentCount, SMTP_DAILY_LIMIT_PER_ACCOUNT } from '@/lib/smtp-rotation';
 import { createEmailTracking, injectTrackingPixel } from '@/lib/email-tracking';
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+export const maxDuration = 300;
+
 const MAX_RETRY_ATTEMPTS = 0;
 const EMAIL_GENERATION_MODEL = 'gpt-5.4-nano';
 

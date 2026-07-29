@@ -6,6 +6,10 @@ import {
   getApiKeysFromCredentials,
 } from '@/lib/api-key-rotation';
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+export const maxDuration = 300;
+
 /**
  * Generates an AI-powered response using OpenAI and the latest settings from database.
  */

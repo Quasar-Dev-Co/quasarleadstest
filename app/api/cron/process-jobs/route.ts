@@ -6,6 +6,10 @@ import OpenAI from 'openai';
 import { GoogleAdsDetector } from '@/lib/googleAdsDetector';
 import { enrichLeadsWithOwners } from '@/lib/leadEnrichment';
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+export const maxDuration = 300;
+
 const MAX_EXECUTION_TIME = 90000; // 90 seconds
 
 function isCronAuthorized(request: NextRequest): boolean {

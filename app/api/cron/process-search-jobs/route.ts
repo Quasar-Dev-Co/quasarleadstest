@@ -7,6 +7,8 @@ import {
 } from '@/lib/api-key-rotation';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const maxDuration = 300;
 
 type SerpResult = {
 	name?: string;

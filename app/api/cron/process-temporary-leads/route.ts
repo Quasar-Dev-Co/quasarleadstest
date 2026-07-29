@@ -7,6 +7,9 @@ import {
 } from '@/lib/geminiEnrichment';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const maxDuration = 300;
+
 const ENRICHMENT_GROUP_SIZE = GEMINI_ENRICHMENT_GROUP_SIZE; // 10 companies per Gemini interaction
 const SERPAPI_QUOTA_COOLDOWN_MINUTES = 30;
 const SERPAPI_QUOTA_ERROR_PATTERN = /out of searches|quota|rate limit|too many requests|insufficient|429/i;

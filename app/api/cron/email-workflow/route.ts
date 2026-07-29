@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+export const maxDuration = 300;
+
 /**
  * Complete Email Workflow Cron Job
  * 
@@ -13,7 +17,21 @@ import { NextRequest, NextResponse } from 'next/server';
 export async function GET(request: NextRequest): Promise<NextResponse> {
   console.log('🔄 Email Workflow: Starting complete email processing workflow...');
   
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const baseUrl = (() => {
+    const candidates = [
+      process.env.NEXT_PUBLIC_APP_URL,
+      process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null,
+      process.env.APP_BASE_URL,
+    ];
+    for (const c of candidates) {
+      if (!c) continue;
+      const v = c.trim().replace(/\/$/, '');
+      if (!v) continue;
+      if (v.includes('localhost') || v.includes('127.0.0.1')) continue;
+      return v;
+    }
+    return 'http://localhost:3000';
+  })();
   const url = new URL(request.url);
   const userId = url.searchParams.get('userId') || undefined;
   const authHeader = request.headers.get('authorization') || '';

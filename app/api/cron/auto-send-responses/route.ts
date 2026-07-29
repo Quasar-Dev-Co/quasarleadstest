@@ -3,6 +3,10 @@ import { prisma } from '@/lib/prisma';
 import { emailService } from '@/lib/emailService';
 import { createEmailTracking, injectTrackingPixel } from '@/lib/email-tracking';
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+export const maxDuration = 300;
+
 /**
  * Vercel Cron Job: Auto-sends draft AI responses for users with autoReplyEnabled = true.
  * Runs every 1 minute.
@@ -79,9 +83,12 @@ async function processUserAutoSend(userId: string): Promise<{ userId: string; se
     }
 
     const creds = (user.credentials as any) || {};
-    const missingSmtp = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASSWORD'].filter(k => !creds[k]);
-    if (missingSmtp.length > 0) {
-      return { userId, sent: 0, errors: 0, message: `Missing SMTP: ${missingSmtp.join(', ')}` };
+    const hasLegacySmtp = creds.SMTP_HOST && creds.SMTP_PORT && creds.SMTP_USER && creds.SMTP_PASSWORD;
+    const hasMultiSmtp = Array.isArray(creds.SMTP_ACCOUNTS) && creds.SMTP_ACCOUNTS.some((a: any) =>
+      a?.SMTP_HOST && a?.SMTP_PORT && a?.SMTP_USER && a?.SMTP_PASSWORD
+    );
+    if (!hasLegacySmtp && !hasMultiSmtp) {
+      return { userId, sent: 0, errors: 0, message: 'Missing SMTP credentials (neither legacy nor multi-account)' };
     }
 
     // Find all draft/sending AI responses for this user

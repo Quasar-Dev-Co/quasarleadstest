@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+export const maxDuration = 300;
+
 const BATCH_SIZE = 30;
 
 interface CleanupJob {
@@ -21,7 +25,7 @@ export async function GET(request: NextRequest) {
   try {
     const userId = request.nextUrl.searchParams.get('userId');
     if (!userId) {
-      return NextResponse.json({ success: false, error: 'userId is required' }, { status: 400 });
+      return NextResponse.json({ success: true, message: 'email-cleanup requires userId query param — skipped automatic cron trigger. Call manually with ?userId=...' });
     }
 
     const user = await prisma.user.findUnique({
